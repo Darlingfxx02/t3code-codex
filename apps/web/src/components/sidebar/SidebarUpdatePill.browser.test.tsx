@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   return {
     update: null as DesktopUpdateState | null,
     hasUpdates: false,
+    openReview: vi.fn().mockResolvedValue({ draftId: "draft", threadId: "thread" }),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -32,6 +33,14 @@ vi.mock("../../state/desktopUpdate", async (importOriginal) => ({
 vi.mock("../../env", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../env")>()),
   isElectron: true,
+}));
+vi.mock("../../hooks/useHandleNewThread", () => ({
+  useHandleNewThread: () => ({
+    activeDraftThread: null,
+    activeThread: null,
+    defaultProjectRef: { environmentId: "env", projectId: "project" },
+    handleNewThread: mocks.openReview,
+  }),
 }));
 vi.mock("./useUpdateEverything", () => ({
   useUpdateEverything: () => ({
@@ -72,6 +81,7 @@ const RELEASE_NOTES: DesktopUpdateState["releaseNotes"] = [
 function setup(update: DesktopUpdateState | null, { hasUpdates = false } = {}) {
   mocks.update = update;
   mocks.hasUpdates = hasUpdates;
+  mocks.openReview.mockClear();
 }
 
 function publish(update: DesktopUpdateState | null) {
@@ -117,27 +127,23 @@ describe("SidebarUpdatePill release notes", () => {
 });
 
 describe("SidebarUpdatePill update everything", () => {
-  it("does not refocus the update button after a pointer cancel", async () => {
+  it("opens a review chat instead of the update dialog", async () => {
     setup(null, { hasUpdates: true });
     await using screen = await render(<SidebarUpdatePill />);
-    const button = screen.getByRole("button", { name: "Update everything" });
+    const button = screen.getByRole("button", { name: "Review update in a new chat" });
     await userEvent.click(button);
-    const cancel = page.getByRole("button", { name: "Cancel" });
-    await expect.element(cancel).toBeVisible();
-
-    await userEvent.click(cancel);
-    await vi.waitFor(() => expect(document.querySelector('[role="alertdialog"]')).toBeNull());
-    expect(document.activeElement).not.toBe(button.element());
+    await vi.waitFor(() => expect(mocks.openReview).toHaveBeenCalledTimes(1));
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(mocks.openReview.mock.calls[0]?.[1]?.prompt).toContain(
+      "Разбери доступное обновление T3 Code",
+    );
   });
 
-  it("returns focus to the update button after Escape", async () => {
-    setup(null, { hasUpdates: true });
+  it("opens a review chat instead of downloading a desktop update", async () => {
+    setup(nightlyUpdate([]));
     await using screen = await render(<SidebarUpdatePill />);
-    const button = screen.getByRole("button", { name: "Update everything" });
+    const button = screen.getByRole("button", { name: "Review update in a new chat" });
     await userEvent.click(button);
-    await expect.element(page.getByRole("button", { name: "Cancel" })).toBeVisible();
-
-    await userEvent.keyboard("{Escape}");
-    await vi.waitFor(() => expect(document.activeElement).toBe(button.element()));
+    await vi.waitFor(() => expect(mocks.openReview).toHaveBeenCalledTimes(1));
   });
 });

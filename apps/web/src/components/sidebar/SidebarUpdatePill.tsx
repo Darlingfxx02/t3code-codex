@@ -3,14 +3,14 @@ import {
   type DesktopUpdateState,
   managedUpdatesDenial,
 } from "@t3tools/contracts";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { TriangleAlertIcon } from "lucide-react";
 import { type ComponentProps, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { isElectron } from "../../env";
+import { useHandleNewThread } from "../../hooks/useHandleNewThread";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
-import { ensureLocalApi } from "../../localApi";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import { usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -21,7 +21,6 @@ import {
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateDownloadedVersion,
   getDesktopUpdateIdleTooltip,
-  getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
@@ -40,8 +39,8 @@ import {
 } from "./DesktopUpdateStatusIcon";
 import { SidebarUpdateReleaseNotes } from "./SidebarUpdateReleaseNotes";
 import { SidebarUpdateCapsule } from "./SidebarUpdateCapsule";
-import { UpdateEverythingDialog } from "./UpdateEverythingDialog";
 import type { UpdateEverythingRun, UpdateRunLocalState } from "./updateEverything.logic";
+import { buildUpdateReviewPrompt } from "./updateReviewPrompt";
 import {
   clearSavedUpdateEverythingResult,
   saveUpdateEverythingResult,
@@ -197,10 +196,11 @@ export function SidebarUpdatePill() {
 
 function SidebarUpdateControl() {
   const state = useDesktopUpdateState();
+  const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
+    useHandleNewThread();
   // The desktop updates this machine, whose policy the primary environment reports.
   const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
   const [isActionPending, setIsActionPending] = useState(false);
-  const [isConfirmingEverything, setIsConfirmingEverything] = useState(false);
   const [checkAnimationKey, setCheckAnimationKey] = useState(0);
   const [releaseNotesPopoverHandle] = useState(() => PopoverCreateHandle());
   const suppressReleaseNotesFocusOpen = useRef(false);
@@ -248,11 +248,13 @@ function SidebarUpdateControl() {
   const idleTooltip =
     !showUpdateDetails && !showCheckIcon ? getDesktopUpdateIdleTooltip(state, updatesDenial) : null;
   const tooltip = runsEverything
-    ? everything.summary
+    ? "Review update in a new chat"
     : showUpdateDetails
       ? state
-        ? getDesktopUpdateButtonTooltip(state)
-        : "Update available"
+        ? action === "download" || action === "install"
+          ? "Review update in a new chat"
+          : getDesktopUpdateButtonTooltip(state)
+        : "Review update in a new chat"
       : showCheckIcon
         ? "Checking for updates…"
         : (idleTooltip?.title ?? "Check for updates");
@@ -277,49 +279,67 @@ function SidebarUpdateControl() {
     setReleaseNotesOpen(showReleaseNotesPopover && releaseNotesTriggerFocusVisible);
   }
 
-  const handleAction = async () => {
+  const reviewProjectRef = activeThread
+    ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
+    : activeDraftThread
+      ? scopeProjectRef(activeDraftThread.environmentId, activeDraftThread.projectId)
+      : defaultProjectRef;
+
+  const openUpdateReviewChat = async () => {
+    if (reviewProjectRef === null) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not start update review",
+          description: "Open the customization project before reviewing this update.",
+        }),
+      );
+      return;
+    }
+    setIsActionPending(true);
+    try {
+      const opened = await handleNewThread(reviewProjectRef, {
+        prompt: buildUpdateReviewPrompt({
+          currentVersion: state?.currentVersion ?? null,
+          targetVersion: state?.availableVersion ?? everything.version,
+          providerCount: everything.providerCount,
+          rows: everything.rows,
+          releaseNotes: state?.releaseNotes ?? [],
+        }),
+      });
+      if (opened === null) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not start update review",
+            description: "The customization project is not available right now.",
+          }),
+        );
+      }
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not start update review",
+          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        }),
+      );
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleAction = () => {
     const bridge = window.desktopBridge;
     if (isInteractionDisabled) return;
 
-    if (runsEverything) {
-      setIsConfirmingEverything(true);
+    if (runsEverything || action === "download" || action === "install") {
+      void openUpdateReviewChat();
       return;
     }
 
     if (!bridge || !state) return;
     setIsActionPending(true);
-
-    if (action === "download") {
-      void downloadLocalUpdate(bridge, { notifyDownloaded: true }).finally(() =>
-        setIsActionPending(false),
-      );
-      return;
-    }
-
-    if (action === "install") {
-      let confirmed = false;
-      try {
-        confirmed = await ensureLocalApi().dialogs.confirm(
-          getDesktopUpdateInstallConfirmationMessage(state),
-        );
-      } catch (error) {
-        setIsActionPending(false);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not confirm update",
-            description: error instanceof Error ? error.message : "Update confirmation failed.",
-          }),
-        );
-        return;
-      }
-      if (!confirmed) {
-        setIsActionPending(false);
-        return;
-      }
-      void installLocalUpdate(bridge).finally(() => setIsActionPending(false));
-      return;
-    }
 
     if (!prefersReducedMotion) {
       setIsCheckAnimationLatched(true);
@@ -352,36 +372,6 @@ function SidebarUpdateControl() {
       .finally(() => setIsActionPending(false));
   };
 
-  const runEverything = async () => {
-    const bridge = window.desktopBridge;
-    setIsConfirmingEverything(false);
-    setIsActionPending(true);
-    const result = await settlePromise(() =>
-      everything.run({
-        ...(bridge && action === "download"
-          ? {
-              downloadLocal: (reportError) =>
-                downloadLocalUpdate(bridge, { notifyDownloaded: false, reportError }),
-            }
-          : {}),
-        ...(bridge && action !== "none"
-          ? { installLocal: (reportError) => installLocalUpdate(bridge, reportError) }
-          : {}),
-      }),
-    );
-    if (result._tag === "Failure") {
-      const error = squashAtomCommandFailure(result);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not update everything",
-          description: error instanceof Error ? error.message : "An unexpected error occurred.",
-        }),
-      );
-    }
-    setIsActionPending(false);
-  };
-
   const handleCheckAnimationIteration = () => {
     setIsCheckAnimationLatched(
       shouldContinueDesktopUpdateCheckAnimation({
@@ -402,18 +392,6 @@ function SidebarUpdateControl() {
       status={iconStatus}
     />
   );
-  const confirmDialog = (
-    <UpdateEverythingDialog
-      open={isConfirmingEverything}
-      onOpenChange={setIsConfirmingEverything}
-      version={everything.version}
-      providerCount={everything.providerCount}
-      rows={everything.rows}
-      restarts={everything.restarts}
-      onConfirm={() => void runEverything()}
-    />
-  );
-
   if (run !== null) {
     const local: UpdateRunLocalState =
       run.localVersion === null
@@ -444,7 +422,6 @@ function SidebarUpdateControl() {
               }
             : {})}
         />
-        {confirmDialog}
       </SidebarMenuItem>
     );
   }
@@ -573,7 +550,6 @@ function SidebarUpdateControl() {
           </PopoverPopup>
         ) : null}
       </Popover>
-      {confirmDialog}
     </SidebarMenuItem>
   );
 }
