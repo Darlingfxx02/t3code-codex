@@ -43,12 +43,16 @@ export function ZoomableImage({
   name,
   mimeType,
   onError,
+  maxWidth,
+  maxHeight,
   ref,
 }: {
   src: string;
   name: string;
   mimeType?: string | undefined;
   onError: () => void;
+  maxWidth?: number | undefined;
+  maxHeight?: number | undefined;
   ref?: Ref<ZoomableImageHandle>;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -70,12 +74,22 @@ export function ZoomableImage({
   } | null>(null);
   const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
-  const maxHeight = Math.max(1, Math.min(viewerSize.height * 0.86, viewerSize.height - 160));
+  const maxHeightLimit = Math.max(
+    1,
+    Math.min(maxHeight ?? viewerSize.height * 0.86, viewerSize.height - 160),
+  );
+  const maxWidthLimit = Math.max(
+    1,
+    Math.min(
+      maxWidth ?? viewerSize.width * 0.92 - (viewerSize.width >= 640 ? 96 : 0),
+      viewerSize.width,
+    ),
+  );
   // A vector scales without loss, and an SVG without width and height reports a tiny default size.
   const fit = Math.min(
     mimeType === "image/svg+xml" ? Infinity : 1,
-    (viewerSize.width * 0.92 - (viewerSize.width >= 640 ? 96 : 0)) / (naturalSize.width || 1),
-    maxHeight / (naturalSize.height || 1),
+    maxWidthLimit / (naturalSize.width || 1),
+    maxHeightLimit / (naturalSize.height || 1),
   );
   const width = naturalSize.width * fit * zoom;
   const height = naturalSize.height * fit * zoom;
@@ -165,7 +179,7 @@ export function ZoomableImage({
         style={{
           width: width || undefined,
           height: height || undefined,
-          maxHeight,
+          maxHeight: maxHeightLimit,
           cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
         }}
         onClick={(event) => {
@@ -241,7 +255,9 @@ export function ZoomableImage({
           draggable={false}
           className="block max-w-none select-none"
           style={
-            naturalSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }
+            naturalSize.width
+              ? { width, height }
+              : { maxWidth: maxWidthLimit, maxHeight: maxHeightLimit }
           }
           onLoad={(event) => {
             setNaturalSize({

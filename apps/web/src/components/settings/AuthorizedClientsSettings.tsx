@@ -418,7 +418,7 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                         "flex w-full items-baseline gap-2 rounded-lg border px-2.5 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                         isSelected
                           ? "border-foreground/60 bg-muted/30"
-                          : "border-border/50 hover:bg-muted/20",
+                          : "border-border/50 hover:bg-interactive-row-hover",
                       )}
                       onClick={() => setQrEndpointId(option.id)}
                     >
@@ -738,7 +738,7 @@ export const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHead
                   ({ scope, title, description }) => (
                     <label
                       key={scope}
-                      className="flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40"
+                      className="flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors hover:bg-interactive-row-hover"
                     >
                       <Checkbox
                         className="mt-0.5"

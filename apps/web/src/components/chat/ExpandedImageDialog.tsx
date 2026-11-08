@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
+import { memo, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Image as ImageGlyph, Text as TextGlyph } from "lucide";
@@ -20,6 +20,8 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 import { composerFloatingLayerProps } from "./composerEventScope";
+import { observeResize } from "~/lib/observeResize";
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -31,6 +33,8 @@ import { mediaMimeType, mediaMimeTypeFromExtension } from "@t3tools/shared/media
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
   onClose: () => void;
+  onAfterClose?: (() => void) | undefined;
+  composer?: ReactNode | undefined;
 }
 
 const EXPANDED_MEDIA_STATE_CLASS_NAME =
@@ -82,11 +86,28 @@ function ExpandedVideo({ item }: { readonly item: ExpandedImageItem }) {
 export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   preview,
   onClose,
+  onAfterClose,
+  composer,
 }: ExpandedImageDialogProps) {
   const [imageOffset, setImageOffset] = useState(0);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const [accessibilityDetailsSrc, setAccessibilityDetailsSrc] = useState<string | null>(null);
+  const [mediaStageSize, setMediaStageSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
   const zoomableImageRef = useRef<ZoomableImageHandle>(null);
+  const mediaStageRef = useRef<HTMLDivElement>(null);
+  const attachMediaStage = useStableCallback((stage: HTMLDivElement | null) => {
+    mediaStageRef.current = stage;
+    if (!stage) return;
+    const measure = () => {
+      if (mediaStageRef.current !== stage) return;
+      const bounds = stage.getBoundingClientRect();
+      setMediaStageSize({ width: bounds.width, height: bounds.height });
+    };
+    measure();
+    queueMicrotask(measure);
+  });
   const [returnFocusTarget] = useState(() =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
   );
@@ -96,6 +117,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   const close = () => {
     flushSync(onClose);
     if (returnFocusTarget?.isConnected) returnFocusTarget.focus({ preventScroll: true });
+    onAfterClose?.();
   };
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const imageCount = preview.images.length;
@@ -121,6 +143,19 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   const navigateImage = (direction: -1 | 1) => {
     setImageOffset((current) => current + direction);
   };
+
+  // The image fit depends on the stage left after the mounted composer takes its space.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps image fit constraints in sync with the external media stage geometry
+  useLayoutEffect(() => {
+    const stage = mediaStageRef.current;
+    if (!stage) return;
+    const measure = () => {
+      const bounds = stage.getBoundingClientRect();
+      setMediaStageSize({ width: bounds.width, height: bounds.height });
+    };
+    measure();
+    return observeResize(stage, measure);
+  }, []);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || isContextMenuOpen() || event.target instanceof HTMLVideoElement)
@@ -176,7 +211,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         variant="media"
         showCloseButton={false}
         bottomStickOnMobile={false}
-        className="row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
+        className="row-start-1 flex h-full max-h-[calc(100vh-var(--native-titlebar-height,0px))] w-full max-w-none flex-col items-stretch justify-start overflow-hidden [--media-width:92vw] [--media-height:100%] sm:[--media-width:calc(92vw-96px)]"
         onKeyDown={onKeyDown}
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}
@@ -208,70 +243,87 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             <ChevronLeftIcon className="size-5" />
           </Button>
         )}
-        <MediaActions source={actionsSource} showTooltip={false}>
-          <div className="relative isolate z-10 flex max-h-full max-w-[var(--media-width)] flex-col items-center">
-            {item.type === "video" ? (
-              <ExpandedVideo key={index} item={item} />
-            ) : showingAccessibilityDetails ? (
-              accessibilityDetails ? (
-                <SnapShotAccessibilityData
-                  details={accessibilityDetails}
-                  className="h-[min(var(--media-height),40rem)] w-[min(var(--media-width),42rem)] transition-opacity duration-140 ease-out starting:opacity-0 rounded-lg border border-border/70 bg-background p-4 text-xs leading-5 shadow-2xl motion-reduce:transition-none"
+        <div
+          ref={attachMediaStage}
+          className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden px-4 pb-3 pt-4 sm:px-6"
+        >
+          <MediaActions source={actionsSource} showTooltip={false}>
+            <div className="relative isolate z-10 flex min-h-0 max-h-full max-w-[var(--media-width)] flex-col items-center">
+              {item.type === "video" ? (
+                <ExpandedVideo key={index} item={item} />
+              ) : showingAccessibilityDetails ? (
+                accessibilityDetails ? (
+                  <SnapShotAccessibilityData
+                    details={accessibilityDetails}
+                    className="h-[min(var(--media-height),40rem)] w-[min(var(--media-width),42rem)] transition-opacity duration-140 ease-out starting:opacity-0 rounded-lg border border-border/70 bg-background p-4 text-xs leading-5 shadow-2xl motion-reduce:transition-none"
+                  />
+                ) : null
+              ) : item.src === null || failedImageSrc === item.src ? (
+                <ExpandedMediaFailure>
+                  <p>
+                    {openOriginalLink
+                      ? "This image could not be loaded."
+                      : "Image unavailable. The file may have been moved or deleted."}
+                  </p>
+                  {openOriginalLink}
+                </ExpandedMediaFailure>
+              ) : (
+                <ZoomableImage
+                  ref={zoomableImageRef}
+                  key={`${index}:${item.src}`}
+                  src={item.src}
+                  name={item.name}
+                  mimeType={itemMimeType(item)}
+                  onError={() => setFailedImageSrc(item.src)}
+                  maxWidth={mediaStageSize ? mediaStageSize.width - 48 : undefined}
+                  maxHeight={mediaStageSize ? mediaStageSize.height - 48 : undefined}
                 />
-              ) : null
-            ) : item.src === null || failedImageSrc === item.src ? (
-              <ExpandedMediaFailure>
-                <p>
-                  {openOriginalLink
-                    ? "This image could not be loaded."
-                    : "Image unavailable. The file may have been moved or deleted."}
-                </p>
-                {openOriginalLink}
-              </ExpandedMediaFailure>
-            ) : (
-              <ZoomableImage
-                ref={zoomableImageRef}
-                key={`${index}:${item.src}`}
-                src={item.src}
-                name={item.name}
-                mimeType={itemMimeType(item)}
-                onError={() => setFailedImageSrc(item.src)}
-              />
-            )}
-            <div className="mt-2 flex max-w-[var(--media-width)] items-center justify-center gap-1.5 text-xs text-white/80 max-sm:px-10">
-              <span className="truncate" aria-live="polite" aria-atomic="true">
-                {item.name}
-                {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
-              </span>
-              {accessibilityDetails && item.source ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        aria-label={contentsLabel}
-                        aria-pressed={showingAccessibilityDetails}
-                        onClick={() =>
-                          setAccessibilityDetailsSrc(showingAccessibilityDetails ? null : item.src)
-                        }
-                        size="icon-micro"
-                        variant="overlay"
+              )}
+              <div className="mt-2 flex max-w-[var(--media-width)] items-center justify-center gap-1.5 text-xs text-white/80 max-sm:px-10">
+                <span className="truncate" aria-live="polite" aria-atomic="true">
+                  {item.name}
+                  {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
+                </span>
+                {accessibilityDetails && item.source ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          aria-label={contentsLabel}
+                          aria-pressed={showingAccessibilityDetails}
+                          onClick={() =>
+                            setAccessibilityDetailsSrc(
+                              showingAccessibilityDetails ? null : item.src,
+                            )
+                          }
+                          size="icon-micro"
+                          variant="overlay"
+                        />
+                      }
+                    >
+                      <MorphIcon
+                        className="size-3"
+                        aria-hidden="true"
+                        icon={showingAccessibilityDetails ? ImageGlyph : TextGlyph}
                       />
-                    }
-                  >
-                    <MorphIcon
-                      className="size-3"
-                      aria-hidden="true"
-                      icon={showingAccessibilityDetails ? ImageGlyph : TextGlyph}
-                    />
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">{contentsLabel}</TooltipPopup>
-                </Tooltip>
-              ) : item.source ? (
-                <SnapShotContentsButton source={item.source} side="top" />
-              ) : null}
+                    </TooltipTrigger>
+                    <TooltipPopup side="top">{contentsLabel}</TooltipPopup>
+                  </Tooltip>
+                ) : item.source ? (
+                  <SnapShotContentsButton source={item.source} side="top" />
+                ) : null}
+              </div>
             </div>
+          </MediaActions>
+        </div>
+        {composer && item.type !== "video" ? (
+          <div
+            className="z-10 w-full shrink-0 px-4 pb-3 sm:px-6 sm:pb-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {composer}
           </div>
-        </MediaActions>
+        ) : null}
         {preview.images.length > 1 && (
           <Button
             type="button"
@@ -326,7 +378,15 @@ registerThreadOverlay((threadKey) => {
   if (current !== null && current.threadKey !== threadKey) closeExpandedImagePreview();
 });
 
-export function ExpandedImageDialogHost({ threadKey }: { readonly threadKey: string }) {
+export function ExpandedImageDialogHost({
+  threadKey,
+  composer,
+  onClose,
+}: {
+  readonly threadKey: string;
+  readonly composer?: ReactNode | undefined;
+  readonly onClose?: (() => void) | undefined;
+}) {
   const state = useAtomValue(expandedImagePreviewAtom);
   const preview = state?.threadKey === threadKey ? state.preview : null;
   if (preview === null) return null;
@@ -334,7 +394,9 @@ export function ExpandedImageDialogHost({ threadKey }: { readonly threadKey: str
     <ExpandedImageDialog
       key={expandedImageKey(preview)}
       preview={preview}
+      composer={composer}
       onClose={closeExpandedImagePreview}
+      onAfterClose={onClose}
     />
   );
 }

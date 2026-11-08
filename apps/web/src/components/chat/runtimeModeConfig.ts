@@ -3,7 +3,13 @@ import {
   type ManagedPolicySummary,
   type RuntimeMode,
 } from "@t3tools/contracts";
-import { type LucideIcon, LockIcon, PenLineIcon, ShieldOffIcon, SparklesIcon } from "lucide-react";
+import {
+  LockIcon,
+  PenLineIcon,
+  ShieldOffIcon,
+  WandSparklesIcon,
+  type LucideIcon,
+} from "lucide-react";
 
 export const runtimeModeConfig: Record<
   RuntimeMode,
@@ -11,22 +17,22 @@ export const runtimeModeConfig: Record<
 > = {
   "approval-required": {
     label: "Supervised",
-    description: "Ask before commands and file changes.",
+    description: "Always ask before running commands or changing files.",
     icon: LockIcon,
   },
   "auto-accept-edits": {
     label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
+    description: "Apply file edits automatically, while asking before other actions.",
     icon: PenLineIcon,
   },
   auto: {
     label: "Auto",
-    description: "Supported providers approve routine actions; others still ask.",
-    icon: SparklesIcon,
+    description: "Approve routine actions automatically and ask before higher-risk actions.",
+    icon: WandSparklesIcon,
   },
   "full-access": {
     label: "Full access",
-    description: "Allow commands and edits without prompts.",
+    description: "Allow commands and file changes without asking first.",
     // An open lock reads like a closed one at small sizes; a crossed shield does not.
     icon: ShieldOffIcon,
   },

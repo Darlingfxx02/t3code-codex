@@ -2,75 +2,36 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
-const base = {
-  matchesDefault: true,
-  planModeUiEnabled: false,
-  collapsed: false,
-  measuredHiddenBlockCount: 0,
-};
-
 describe("resolveComposerControlsOwnership", () => {
-  it("hides the chip at the default and lets the model picker answer composer.mode", () => {
-    const result = resolveComposerControlsOwnership(base);
-    expect(result).toMatchObject({
-      accessDisplay: "hidden",
-      showModeBlock: false,
-      hiddenBlockIds: [],
-      pickerOwnsModeShortcut: true,
-    });
-  });
+  it.each([false, true])(
+    "keeps permissions out of overflow with Plan enabled: %s",
+    (planModeUiEnabled) => {
+      const result = resolveComposerControlsOwnership({
+        planModeUiEnabled,
+        measuredHiddenBlockCount: 0,
+      });
+      expect(result).toMatchObject({
+        showModeBlock: planModeUiEnabled,
+        hiddenBlockIds: [],
+        showOverflow: false,
+      });
+    },
+  );
 
-  it("shows a labelled chip that owns composer.mode when the mode differs", () => {
-    const result = resolveComposerControlsOwnership({ ...base, matchesDefault: false });
+  it("overflows only the Plan toggle when space runs out", () => {
+    const result = resolveComposerControlsOwnership({
+      planModeUiEnabled: true,
+      measuredHiddenBlockCount: 1,
+    });
     expect(result).toMatchObject({
-      accessDisplay: "label",
       showModeBlock: true,
-      pickerOwnsModeShortcut: false,
+      hiddenBlockIds: ["mode"],
+      hiddenBlockCount: 1,
+      showOverflow: true,
     });
-  });
-
-  it("gives an overflowed chip's Permissions to the overflow menu when it has no Plan toggle", () => {
-    const result = resolveComposerControlsOwnership({
-      ...base,
-      matchesDefault: false,
-      measuredHiddenBlockCount: 1,
-    });
-    expect(result.hiddenBlockIds).toEqual(["mode"]);
-    expect(result.overflowShowsPermissions).toBe(true);
-    expect(result.pickerOwnsModeShortcut).toBe(false);
-  });
-
-  it("keeps the Plan toggle block at the default and leaves Permissions with the picker", () => {
-    const result = resolveComposerControlsOwnership({
-      ...base,
-      planModeUiEnabled: true,
-      measuredHiddenBlockCount: 1,
-    });
-    expect(result.showModeBlock).toBe(true);
-    expect(result.hiddenBlockIds).toEqual(["mode"]);
-    expect(result.overflowShowsPermissions).toBe(false);
-    expect(result.pickerOwnsModeShortcut).toBe(true);
-  });
-
-  it("overflows only the chip when the Plan toggle gives the overflow menu content", () => {
-    const result = resolveComposerControlsOwnership({
-      ...base,
-      matchesDefault: false,
-      planModeUiEnabled: true,
-      measuredHiddenBlockCount: 1,
-    });
-    expect(result.hiddenBlockIds).toEqual(["mode"]);
-    // Permissions stay in the model picker, which now answers composer.mode.
-    expect(result.overflowShowsPermissions).toBe(false);
-    expect(result.pickerOwnsModeShortcut).toBe(true);
-  });
-
-  it("shows the non-default chip as an icon in the compacted row", () => {
-    const result = resolveComposerControlsOwnership({
-      ...base,
-      matchesDefault: false,
-      collapsed: true,
-    });
-    expect(result.accessDisplay).toBe("icon");
+    expect(
+      resolveComposerControlsOwnership({ planModeUiEnabled: false, measuredHiddenBlockCount: 1 })
+        .showOverflow,
+    ).toBe(false);
   });
 });

@@ -36,8 +36,9 @@ import { useStableCallback } from "./useStableCallback";
 export function useRightPanelSurfaceClose(input: {
   readonly threadRef: ScopedThreadRef | null;
   readonly terminalLabelsById: ReadonlyMap<string, string>;
+  readonly terminalPristineById?: ReadonlyMap<string, boolean | undefined>;
 }) {
-  const { threadRef, terminalLabelsById } = input;
+  const { threadRef, terminalLabelsById, terminalPristineById } = input;
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
   const deleteThread = useAtomCommand(threadEnvironment.delete, "side chat delete");
   const canOperatePreview = useEnvironmentScope(
@@ -150,7 +151,14 @@ export function useRightPanelSurfaceClose(input: {
     const otherLabels = surface.terminalIds
       .filter((terminalId) => terminalId !== surface.activeTerminalId)
       .map(labelFor);
-    void confirmTerminalClose([labelFor(surface.activeTerminalId), ...otherLabels]).then(
+    void confirmTerminalClose(
+      [labelFor(surface.activeTerminalId), ...otherLabels],
+      {
+        isPristine:
+          terminalPristineById !== undefined &&
+          surface.terminalIds.every((terminalId) => terminalPristineById.get(terminalId) === true),
+      },
+    ).then(
       (confirmed) => {
         if (confirmed) finishClose([surface]);
       },

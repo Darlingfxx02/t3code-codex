@@ -2,7 +2,6 @@ import * as Dialog from "../../components/ui/Dialog";
 import { useCallback } from "react";
 
 import { removeThreadOutboxMessage } from "../../state/thread-outbox-removal";
-import { clearComposerDraftContent } from "../../state/use-composer-drafts";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { appAtomRegistry } from "../../state/atom-registry";
 import {
@@ -20,46 +19,15 @@ export function usePendingTaskListActions(
 } {
   const openPendingTask = useCallback(
     (pendingTask: PendingNewTask) => {
-      selectThreadRoute(
-        pendingTask.kind === "pending"
-          ? {
-              environmentId: String(pendingTask.environmentId),
-              threadId: String(pendingTask.message.threadId),
-            }
-          : {
-              draft: {
-                environmentId: String(pendingTask.environmentId),
-                projectId: String(pendingTask.projectId),
-                draftId: pendingTask.draftKey,
-              },
-            },
-      );
+      selectThreadRoute({
+        environmentId: String(pendingTask.environmentId),
+        threadId: String(pendingTask.message.threadId),
+      });
     },
     [selectThreadRoute],
   );
 
   const confirmDeletePendingTask = useCallback((pendingTask: PendingNewTask) => {
-    if (pendingTask.kind === "draft") {
-      Dialog.alert("Discard draft?", `“${pendingTask.title}” will be removed.`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Discard",
-          style: "destructive",
-          onPress: () => {
-            void withThreadDismissal(
-              pendingTask.key,
-              async () =>
-                clearComposerDraftContent(pendingTask.draftKey, {
-                  clearModelSelection: true,
-                  clearWorkspaceSelection: true,
-                }),
-              () => true,
-            );
-          },
-        },
-      ]);
-      return;
-    }
     Dialog.alert(
       "Delete pending task?",
       `“${pendingTask.title}” has not been sent yet and will be removed from the outbox.`,

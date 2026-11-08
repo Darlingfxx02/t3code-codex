@@ -9,10 +9,13 @@ import { SymbolView } from "./ui/AppSymbol";
 import type { ResolvedFilePreviewSource } from "./FilePreviewModal.types";
 import { MediaActionsMenu } from "./MediaActionsMenu";
 import { MediaSourceCaption } from "./MediaSourceCaption";
+import { ImagePreviewDictationFooter } from "./ImagePreviewDictationFooter";
 
 type MediaImagePreviewProps = {
   readonly source: ResolvedFilePreviewSource;
   readonly onRequestClose: () => void;
+  readonly dictationDraftKey?: string | null;
+  readonly dictationLabel?: string;
 };
 
 const ImagePreviewContext = createContext<MediaImagePreviewProps | null>(null);
@@ -52,6 +55,14 @@ export function MediaImagePreview(props: MediaImagePreviewProps) {
       gallery.findIndex((item) => item.uri === props.source.uri),
     ),
   );
+  const FooterComponent = props.dictationDraftKey
+    ? () => (
+        <ImagePreviewDictationFooter
+          draftKey={props.dictationDraftKey!}
+          label={props.dictationLabel}
+        />
+      )
+    : undefined;
   return (
     <ImagePreviewContext value={props}>
       <ImageViewing
@@ -63,6 +74,7 @@ export function MediaImagePreview(props: MediaImagePreviewProps) {
         swipeToCloseEnabled={false}
         doubleTapToZoomEnabled
         HeaderComponent={ImagePreviewHeader}
+        FooterComponent={FooterComponent}
       />
     </ImagePreviewContext>
   );

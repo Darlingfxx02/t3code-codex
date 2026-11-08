@@ -364,10 +364,12 @@ function projectedWorkEntryTone(item: OrchestrationV2TurnItem): WorkLogEntry["to
 export function providerErrorPresentation(
   item: Extract<OrchestrationV2TurnItem, { readonly type: "error" }>,
 ): { readonly label: string; readonly detail: string } {
+  const capacity = isProviderCapacityError(item);
   if (item.retry === undefined) {
     return {
-      label:
-        item.failure.class === "usage_limit"
+      label: capacity
+        ? "Model at capacity"
+        : item.failure.class === "usage_limit"
           ? "Usage limit reached"
           : item.title?.trim() || "Provider error",
       detail: item.failure.message,
@@ -379,11 +381,15 @@ export function providerErrorPresentation(
       : `${item.retry.attempt}/${item.retry.maxAttempts}`;
   const label =
     item.status === "running"
-      ? `Retrying provider (${progress})`
+      ? capacity
+        ? `Model at capacity · retrying (${progress})`
+        : `Retrying provider (${progress})`
       : item.status === "completed"
-        ? `Provider recovered (${progress} retries)`
+        ? capacity
+          ? `Model recovered (${progress} retries)`
+          : `Provider recovered (${progress} retries)`
         : item.status === "failed"
-          ? `${item.failure.class === "usage_limit" ? "Usage limit reached" : "Provider error"} after ${progress} retries`
+          ? `${capacity ? "Model at capacity" : item.failure.class === "usage_limit" ? "Usage limit reached" : "Provider error"} after ${progress} retries`
           : `Provider retry stopped (${progress})`;
   const retryDelay =
     item.status === "running" && item.retry.retryDelayMs !== null && item.retry.retryDelayMs > 0
@@ -395,6 +401,18 @@ export function providerErrorPresentation(
     label,
     detail: `${item.failure.message}${retryDelay}`,
   };
+}
+
+/** Codex reports model overload as a provider error rather than a usage limit. */
+export function isProviderCapacityError(
+  item: Extract<OrchestrationV2TurnItem, { readonly type: "error" }>,
+): boolean {
+  const message = item.failure.message.toLowerCase();
+  return (
+    item.failure.code === "serverOverloaded" ||
+    (message.includes("capacity") && (message.includes("model") || message.includes("selected"))) ||
+    (message.includes("overload") && message.includes("model"))
+  );
 }
 
 function projectedWorkEntry(row: OrchestrationV2ProjectedTurnItem): WorkLogEntry {

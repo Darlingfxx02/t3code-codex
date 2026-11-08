@@ -43,6 +43,7 @@ import {
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Button } from "~/components/ui/button";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
+import { ResizeGlow, useResizeGlow } from "~/components/ResizeGlow";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
@@ -1199,6 +1200,7 @@ interface ThreadTerminalDrawerProps {
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
   keybindings: ResolvedKeybindingsConfig;
   terminalLabelsById?: ReadonlyMap<string, string>;
+  terminalPristineById?: ReadonlyMap<string, boolean | undefined>;
   terminalLaunchLocationsById?: ReadonlyMap<string, TerminalLaunchLocation>;
 }
 
@@ -1374,8 +1376,8 @@ function TerminalSidebarGroup({
           type="button"
           className={`flex h-[22px] w-full cursor-pointer items-center gap-1 rounded px-1.5 text-2xs ${
             isGroupActive
-              ? "bg-accent/50 text-foreground"
-              : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+              ? "bg-interactive-row-active text-foreground"
+              : "text-muted-foreground hover:bg-interactive-row-hover hover:text-foreground"
           }`}
           onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
         >
@@ -1398,8 +1400,8 @@ function TerminalSidebarGroup({
               className={cn(
                 "group/tab flex h-6 w-full items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
                 isActive
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  ? "bg-interactive-row-active text-foreground"
+                  : "text-muted-foreground hover:bg-interactive-row-hover hover:text-foreground",
               )}
             >
               {canOperateTerminal ? (
@@ -1455,6 +1457,7 @@ export default function ThreadTerminalDrawer({
   onAddTerminalContext,
   keybindings,
   terminalLabelsById,
+  terminalPristineById,
   terminalLaunchLocationsById,
 }: ThreadTerminalDrawerProps) {
   const canOperateTerminal = useEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope);
@@ -1478,6 +1481,15 @@ export default function ThreadTerminalDrawer({
     height: number;
     drawer: HTMLElement | null;
   } | null>(null);
+  const {
+    ref: resizeGlowRef,
+    onPointerCancel: cancelResizeGlow,
+    onPointerDown: showResizeGlow,
+    onPointerEnter: enterResizeGlow,
+    onPointerLeave: leaveResizeGlow,
+    onPointerMove: moveResizeGlow,
+    onPointerUp: endResizeGlow,
+  } = useResizeGlow("horizontal");
 
   const normalizedTerminalIds = (() => {
     const normalizedIds: string[] = [];
@@ -1640,7 +1652,10 @@ export default function ThreadTerminalDrawer({
   const confirmCloseTerminal = (terminalId: string) => {
     if (!canOperateTerminal) return;
     const label = terminalLabelById.get(terminalId) ?? getTerminalLabel(terminalId);
-    void confirmTerminalClose([label]).then((confirmed) => {
+    void confirmTerminalClose(
+      [label],
+      terminalPristineById?.get(terminalId) === true ? { isPristine: true } : {},
+    ).then((confirmed) => {
       if (confirmed && readEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope)) {
         onCloseTerminal(terminalId, threadRef);
       }
@@ -1755,12 +1770,31 @@ export default function ThreadTerminalDrawer({
         {!isPanel ? (
           <div
             className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
-            onPointerDown={handleResizePointerDown}
-            onPointerMove={handleResizePointerMove}
-            onPointerUp={handleResizePointerEnd}
-            onPointerCancel={handleResizePointerEnd}
-            onLostPointerCapture={handleResizePointerEnd}
-          />
+            onPointerDown={(event) => {
+              showResizeGlow(event);
+              handleResizePointerDown(event);
+            }}
+            onPointerEnter={enterResizeGlow}
+            onPointerLeave={leaveResizeGlow}
+            onPointerMove={(event) => {
+              moveResizeGlow(event);
+              handleResizePointerMove(event);
+            }}
+            onPointerUp={(event) => {
+              endResizeGlow();
+              handleResizePointerEnd(event);
+            }}
+            onPointerCancel={(event) => {
+              cancelResizeGlow();
+              handleResizePointerEnd(event);
+            }}
+            onLostPointerCapture={(event) => {
+              cancelResizeGlow();
+              handleResizePointerEnd(event);
+            }}
+          >
+            <ResizeGlow ref={resizeGlowRef} axis="horizontal" />
+          </div>
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
           <p>No terminal sessions for this thread yet.</p>
@@ -1792,12 +1826,31 @@ export default function ThreadTerminalDrawer({
       {!isPanel ? (
         <div
           className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
-          onPointerDown={handleResizePointerDown}
-          onPointerMove={handleResizePointerMove}
-          onPointerUp={handleResizePointerEnd}
-          onPointerCancel={handleResizePointerEnd}
-          onLostPointerCapture={handleResizePointerEnd}
-        />
+          onPointerDown={(event) => {
+            showResizeGlow(event);
+            handleResizePointerDown(event);
+          }}
+          onPointerEnter={enterResizeGlow}
+          onPointerLeave={leaveResizeGlow}
+          onPointerMove={(event) => {
+            moveResizeGlow(event);
+            handleResizePointerMove(event);
+          }}
+          onPointerUp={(event) => {
+            endResizeGlow();
+            handleResizePointerEnd(event);
+          }}
+          onPointerCancel={(event) => {
+            cancelResizeGlow();
+            handleResizePointerEnd(event);
+          }}
+          onLostPointerCapture={(event) => {
+            cancelResizeGlow();
+            handleResizePointerEnd(event);
+          }}
+        >
+          <ResizeGlow ref={resizeGlowRef} axis="horizontal" />
+        </div>
       ) : null}
 
       {!hasTerminalSidebar && (
@@ -1808,7 +1861,7 @@ export default function ThreadTerminalDrawer({
               className={`p-1 text-foreground/90 transition-colors ${
                 hasReachedSplitLimit
                   ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                  : "hover:bg-accent"
+                  : "hover:bg-interactive-row-hover"
               }`}
               onClick={onSplitTerminalAction}
               label={splitTerminalActionLabel}
@@ -1821,7 +1874,7 @@ export default function ThreadTerminalDrawer({
               className={`p-1 text-foreground/90 transition-colors ${
                 hasReachedSplitLimit
                   ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                  : "hover:bg-accent"
+                  : "hover:bg-interactive-row-hover"
               }`}
               onClick={onSplitTerminalVerticalAction}
               label={splitTerminalVerticalActionLabel}
@@ -1831,7 +1884,7 @@ export default function ThreadTerminalDrawer({
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
               disabled={!canOperateTerminal}
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className="p-1 text-foreground/90 transition-colors hover:bg-interactive-row-hover"
               onClick={onNewTerminalAction}
               label={newTerminalActionLabel}
             >
@@ -1840,7 +1893,7 @@ export default function ThreadTerminalDrawer({
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
               disabled={!canOperateTerminal}
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className="p-1 text-foreground/90 transition-colors hover:bg-interactive-row-hover"
               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >
@@ -1884,7 +1937,7 @@ export default function ThreadTerminalDrawer({
                     className={`inline-flex h-full items-center px-1 text-foreground/90 transition-colors ${
                       hasReachedSplitLimit
                         ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                        : "hover:bg-accent/70"
+                        : "hover:bg-interactive-row-hover"
                     }`}
                     onClick={onSplitTerminalAction}
                     label={splitTerminalActionLabel}
@@ -1896,7 +1949,7 @@ export default function ThreadTerminalDrawer({
                     className={`inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors ${
                       hasReachedSplitLimit
                         ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                        : "hover:bg-accent/70"
+                        : "hover:bg-interactive-row-hover"
                     }`}
                     onClick={onSplitTerminalVerticalAction}
                     label={splitTerminalVerticalActionLabel}
@@ -1905,7 +1958,7 @@ export default function ThreadTerminalDrawer({
                   </TerminalActionButton>
                   <TerminalActionButton
                     disabled={!canOperateTerminal}
-                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
+                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-interactive-row-hover"
                     onClick={onNewTerminalAction}
                     label={newTerminalActionLabel}
                   >
@@ -1913,7 +1966,7 @@ export default function ThreadTerminalDrawer({
                   </TerminalActionButton>
                   <TerminalActionButton
                     disabled={!canOperateTerminal}
-                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
+                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-interactive-row-hover"
                     onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
                     label={closeTerminalActionLabel}
                   >

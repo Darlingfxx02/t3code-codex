@@ -52,15 +52,15 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
 
   return (
     <div
-      className="@container/changed-files mt-4 rounded-lg bg-secondary dark:bg-input/20"
+      className="@container/changed-files mt-4 rounded-lg bg-secondary dark:bg-input/20 dark:not-in-data-[theme-id]:bg-input/44 dark:not-in-data-[theme-id]:[--interactive-row-hover:var(--accent)]"
       data-changed-files-state="tree"
     >
       <div
         data-changed-files-header=""
-        className="sticky top-2 z-10 flex items-center justify-between gap-2 rounded-t-lg bg-secondary px-3 py-2 dark:bg-background dark:bg-linear-to-b dark:from-input/20 dark:to-input/20"
+        className="sticky top-2 z-10 flex items-center justify-between gap-2 rounded-t-lg bg-secondary px-3 py-2 dark:bg-background dark:bg-linear-to-b dark:from-input/20 dark:to-input/20 dark:not-in-data-[theme-id]:from-input/44 dark:not-in-data-[theme-id]:to-input/44"
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-foreground">
-          <span>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium text-foreground">
+          <span className="font-normal">
             {totals.count.toLocaleString()} changed file{totals.count === 1 ? "" : "s"}
           </span>
           {hasNonZeroStat(totals) && (
@@ -68,7 +68,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               additions={totals.additions}
               deletions={totals.deletions}
               layout="inline"
-              className="text-xs leading-4"
+              className="text-sm leading-5"
             />
           )}
         </div>
@@ -107,7 +107,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               render={
                 <Button
                   type="button"
-                  size="xs"
+                  size="sm"
                   variant="ghost-muted"
                   aria-label="Open diff"
                   onClick={() => onOpenTurnDiff(runId, files[0]?.path)}
@@ -134,7 +134,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
         <div className="px-3 pb-2">
           <Button
             type="button"
-            size="xs"
+            size="sm"
             variant="ghost-muted"
             onClick={() => onOpenTurnDiff(runId, files[0]?.path)}
           >
@@ -200,7 +200,7 @@ const ChangedFilesTree = memo(function ChangedFilesTree(props: {
           type="button"
           data-scroll-anchor-ignore
           aria-expanded={isExpanded}
-          className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+          className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-interactive-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
           style={{ paddingLeft: `${leftPadding}px` }}
           onClick={() => toggleDirectory(node.path)}
         >
@@ -215,11 +215,11 @@ const ChangedFilesTree = memo(function ChangedFilesTree(props: {
             className="size-3.5 shrink-0 text-muted-foreground/75"
             icon={isExpanded ? Folder : FolderClosed}
           />
-          <span className="truncate font-mono text-2xs text-muted-foreground/90 group-hover:text-foreground/90">
+          <span className="truncate font-mono text-sm text-muted-foreground/90 group-hover:text-foreground/90">
             {node.name}
           </span>
           {hasNonZeroStat(node.stat) && (
-            <span className="ml-auto shrink-0 font-mono text-3xs tabular-nums">
+            <span className="ml-auto shrink-0 font-mono text-sm tabular-nums">
               <DiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
             </span>
           )}
@@ -231,7 +231,7 @@ const ChangedFilesTree = memo(function ChangedFilesTree(props: {
       <button
         key={`file:${node.path}`}
         type="button"
-        className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+        className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-interactive-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
         style={{ paddingLeft: `${leftPadding}px` }}
         onClick={() => onOpenTurnDiff(runId, node.path)}
         onContextMenu={
@@ -252,11 +252,11 @@ const ChangedFilesTree = memo(function ChangedFilesTree(props: {
           theme={resolvedTheme}
           className="size-3.5 text-muted-foreground/70"
         />
-        <span className="flex min-w-0 font-mono text-xs text-foreground/85 group-hover:text-foreground">
+        <span className="flex min-w-0 font-mono text-sm text-foreground/85 group-hover:text-foreground">
           <MiddleTruncate value={node.name} />
         </span>
         {node.stat && (
-          <span className="ml-auto shrink-0 font-mono text-3xs tabular-nums">
+          <span className="ml-auto shrink-0 font-mono text-sm tabular-nums">
             <DiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
           </span>
         )}

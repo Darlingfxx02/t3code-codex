@@ -1,5 +1,7 @@
 import { ProviderDriverKind, ProviderInstanceId, type ModelSelection } from "@t3tools/contracts";
 import { useState } from "react";
+import { createModelCapabilities } from "@t3tools/shared/model";
+import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
@@ -8,6 +10,7 @@ import "~/index.css";
 import { render } from "../../../test/render";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import { ComposerEffortColumn } from "./ComposerModelEffort";
 
 it("keeps each registry image when adding a model from another ACP agent", async () => {
   const icons = [
@@ -168,4 +171,116 @@ it("keeps a docked picker open after a pick and hands focus to that model's effo
   await expect.element(page.getByRole("radio", { name: "Medium" })).toHaveFocus();
   await userEvent.keyboard("{Escape}");
   await expect.element(search).not.toBeInTheDocument();
+});
+
+it("chooses a model in two steps and only offers the two subscriptions in the composer", async () => {
+  const entries = deriveProviderInstanceEntries(
+    ["codex", "claudeAgent", "cursor"].map((driver) => ({
+      instanceId: ProviderInstanceId.make(driver),
+      driver: ProviderDriverKind.make(driver),
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready" as const,
+      auth: { status: "authenticated" as const },
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      models: [
+        {
+          slug: driver,
+          name: `${driver} model`,
+          isCustom: false,
+          capabilities: createModelCapabilities({
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning",
+                type: "select",
+                currentValue: "high",
+                options: [
+                  { id: "low", label: "Low" },
+                  { id: "medium", label: "Medium", isDefault: true },
+                  { id: "high", label: "High" },
+                  { id: "xhigh", label: "Extra High" },
+                  { id: "max", label: "Max" },
+                ],
+              },
+            ],
+          }),
+        },
+      ],
+      slashCommands: [],
+      skills: [],
+    })),
+  );
+  function Picker({ locked = false }: { locked?: boolean }) {
+    const [selection, setSelection] = useState({
+      instanceId: entries[0]!.instanceId,
+      model: "codex",
+    });
+    return (
+      <ProviderModelPicker
+        environmentId={null}
+        activeInstanceId={selection.instanceId}
+        model={selection.model}
+        lockedProvider={locked ? entries[0]!.driverKind : null}
+        instanceEntries={entries}
+        modelOptionsByInstance={new Map(entries.map((entry) => [entry.instanceId, entry.models]))}
+        isComposerOwned
+        triggerAriaLabel="Model settings"
+        keybindings={compileResolvedKeybindingsConfig([
+          { key: "alt+arrowright", command: "modelPicker.nextProvider", when: "modelPickerOpen" },
+        ])}
+        onInstanceModelChange={(instanceId, model) => setSelection({ instanceId, model })}
+        effortColumn={
+          <ComposerEffortColumn
+            traits={{
+              provider: entries.find((entry) => entry.instanceId === selection.instanceId)!
+                .driverKind,
+              instanceId: selection.instanceId,
+              models: entries.find((entry) => entry.instanceId === selection.instanceId)!.models,
+              model: selection.model,
+              planModeEnabled: false,
+              onModelOptionsChange: () => {},
+            }}
+          />
+        }
+      />
+    );
+  }
+
+  await using screen = await render(<Picker />);
+  await screen.getByRole("button", { name: "Model settings" }).click();
+  await expect.element(page.getByPlaceholder("Search models...")).not.toBeInTheDocument();
+  await expect.element(page.getByRole("group", { name: "Subscriptions" })).not.toBeInTheDocument();
+  await expect.element(page.getByRole("button", { name: "cursor" })).not.toBeInTheDocument();
+  await page.getByRole("button", { name: "Choose model: codex model", exact: true }).click();
+  await expect.element(page.getByPlaceholder("Search models...")).not.toBeInTheDocument();
+  await expect.element(page.getByRole("option", { name: /codex model/ })).toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "Favorites", exact: true }))
+    .not.toBeInTheDocument();
+  await page.getByRole("button", { name: "Claude", exact: true }).click();
+  await expect.element(page.getByRole("option", { name: /codex model/ })).not.toBeInTheDocument();
+  await page.getByRole("option", { name: /claudeAgent model/ }).click();
+  await expect.element(page.getByRole("slider", { name: "Reasoning" })).toHaveFocus();
+  await expect
+    .element(page.getByRole("button", { name: "Choose model: claudeAgent model", exact: true }))
+    .toBeVisible();
+  await expect.element(page.getByPlaceholder("Search models...")).not.toBeInTheDocument();
+  await userEvent.keyboard("{Alt>}{ArrowRight}{/Alt}");
+  await expect.element(page.getByRole("option", { name: /codex model/ })).toBeVisible();
+  await page.getByRole("button", { name: "Back to reasoning" }).click();
+  await userEvent.keyboard("{Escape}");
+  await screen.getByRole("button", { name: "Model settings" }).click();
+  await page.getByRole("button", { name: "Choose model: claudeAgent model", exact: true }).click();
+  await expect
+    .element(page.getByRole("button", { name: "Claude", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await userEvent.keyboard("{Escape}");
+  await expect.element(page.getByRole("slider", { name: "Reasoning" })).toHaveFocus();
+  await userEvent.keyboard("{Escape}");
+  await screen.rerender(<Picker locked />);
+  await screen.getByRole("button", { name: "Model settings" }).click();
+  await page.getByRole("button", { name: "Choose model: claudeAgent model", exact: true }).click();
+  await expect.element(page.getByRole("button", { name: "Claude", exact: true })).toBeDisabled();
 });

@@ -70,6 +70,8 @@ async function resolvePreviewItem(
 function ResolvedFilePreview(props: {
   readonly source: FilePreviewSource;
   readonly onRequestClose: () => void;
+  readonly dictationDraftKey?: string | null;
+  readonly dictationLabel?: string;
   readonly onOpenError?: (error: unknown) => void;
 }) {
   // Freeze the group at opening; streaming messages and URL refreshes must not reopen the viewer.
@@ -154,6 +156,8 @@ function ResolvedFilePreview(props: {
     <FilePreview
       source={{ ...selected, gallery }}
       onRequestClose={props.onRequestClose}
+      dictationDraftKey={props.dictationDraftKey}
+      dictationLabel={props.dictationLabel}
       onOpenError={onOpenError}
     />
   );
@@ -162,6 +166,8 @@ function ResolvedFilePreview(props: {
 export function FilePreviewModal(props: {
   readonly source: FilePreviewSource | null;
   readonly onRequestClose: () => void;
+  readonly dictationDraftKey?: string | null;
+  readonly dictationLabel?: string;
 
   readonly onOpenError?: (error: unknown) => void;
 }) {
@@ -178,6 +184,8 @@ export function FilePreviewModal(props: {
       key={filePreviewKey(source)}
       source={source}
       onRequestClose={props.onRequestClose}
+      dictationDraftKey={props.dictationDraftKey}
+      dictationLabel={props.dictationLabel}
       {...(props.onOpenError ? { onOpenError: props.onOpenError } : {})}
     />
   );

@@ -79,7 +79,7 @@ function reviewDecisionPresentation(decision: PullRequestReviewDecision) {
       return {
         Icon: UserRoundIcon,
         label: "Awaiting review",
-        toneClassName: "text-muted-foreground/60",
+        toneClassName: "text-muted-foreground/60 dark:text-muted-foreground",
       };
   }
 }
@@ -203,8 +203,16 @@ const CHECK_STATUS_PRESENTATION = {
   },
   failure: { label: "Failed", Icon: CircleXIcon, toneClassName: "text-destructive" },
   cancelled: { label: "Cancelled", Icon: CircleXIcon, toneClassName: "text-destructive" },
-  skipped: { label: "Skipped", Icon: CircleSlashIcon, toneClassName: "text-muted-foreground/70" },
-  neutral: { label: "Neutral", Icon: CircleDashedIcon, toneClassName: "text-muted-foreground/70" },
+  skipped: {
+    label: "Skipped",
+    Icon: CircleSlashIcon,
+    toneClassName: "text-muted-foreground/70 dark:text-muted-foreground",
+  },
+  neutral: {
+    label: "Neutral",
+    Icon: CircleDashedIcon,
+    toneClassName: "text-muted-foreground/70 dark:text-muted-foreground",
+  },
 } as const satisfies Record<
   PullRequestCheckStatus,
   { label: string; Icon: typeof CircleCheckIcon | typeof Spinner; toneClassName: string }
@@ -294,7 +302,7 @@ const REVIEW_OUTCOME_PRESENTATION = {
   dismissed: {
     label: "Review dismissed",
     Icon: CircleDashedIcon,
-    toneClassName: "text-muted-foreground/70",
+    toneClassName: "text-muted-foreground/70 dark:text-muted-foreground",
     ringClassName: "ring-2 ring-muted-foreground/60",
     staleRingClassName:
       "ring-2 ring-[color-mix(in_srgb,var(--contrast-muted-foreground)_30%,var(--background))]",

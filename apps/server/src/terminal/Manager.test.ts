@@ -5,6 +5,7 @@ import {
   DEFAULT_TERMINAL_ID,
   type TerminalAttachStreamEvent,
   type TerminalEvent,
+  type TerminalMetadataStreamEvent,
   type TerminalOpenInput,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -428,6 +429,42 @@ it.layer(
       assert.equal(second.threadId, "thread-1");
       assert.equal(third.threadId, "thread-1");
       expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("marks a fresh terminal pristine and clears that state after input", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const metadataEvents: TerminalMetadataStreamEvent[] = [];
+      const metadataReady = yield* Deferred.make<void>();
+      const unsubscribe = yield* manager.subscribeMetadata((event) =>
+        Effect.gen(function* () {
+          metadataEvents.push(event);
+          if (
+            event.type === "upsert" &&
+            event.terminal.threadId === "thread-1" &&
+            event.terminal.isPristine === false
+          ) {
+            yield* Deferred.succeed(metadataReady, undefined);
+          }
+        }),
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+      yield* manager.open(openInput());
+      const fresh = metadataEvents.find(
+        (event) => event.type === "upsert" && event.terminal.terminalId === DEFAULT_TERMINAL_ID,
+      );
+      expect(fresh).toMatchObject({ type: "upsert", terminal: { isPristine: true } });
+
+      yield* manager.write({ threadId: "thread-1", terminalId: DEFAULT_TERMINAL_ID, data: "pwd\n" });
+      ptyAdapter.processes[0]!.emitExit({ exitCode: 0, signal: 0 });
+      yield* Deferred.await(metadataReady);
+      expect(
+        metadataEvents.some(
+          (event) => event.type === "upsert" && event.terminal.isPristine === false,
+        ),
+      ).toBe(true);
     }),
   );
 

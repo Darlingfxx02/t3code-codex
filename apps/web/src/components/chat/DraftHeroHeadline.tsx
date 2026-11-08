@@ -300,10 +300,17 @@ export function DraftHeroHeadline({
             />
           }
         >
-          <DraftProjectName
-            value={isScratchDraft ? "No project" : (activeProjectTitle ?? "Choose a project")}
-            singleLine
-          />
+          <span className="flex min-w-0 items-baseline gap-1">
+            {activeProjectGroup && !isScratchDraft ? (
+              <span className="flex size-[1em] shrink-0 self-center">
+                <ProjectFavicon project={activeProjectGroup} className="size-full" />
+              </span>
+            ) : null}
+            <DraftProjectName
+              value={isScratchDraft ? "No project" : (activeProjectTitle ?? "Choose a project")}
+              singleLine
+            />
+          </span>
         </TooltipTrigger>
         {activeProjectTitle && !isScratchDraft ? (
           <TooltipPopup side="top">{activeProjectTitle}</TooltipPopup>
@@ -331,7 +338,7 @@ export function DraftHeroHeadline({
           {(item: PickerItem) => {
             const entry = projectEntryByKey.get(item.value);
             return (
-              <ComboboxItem key={item.value} hideIndicator value={item}>
+              <ComboboxItem key={item.value} value={item}>
                 {item.value === ADD_PROJECT_VALUE ? (
                   <FolderPlusIcon className="size-4 shrink-0" />
                 ) : entry ? (

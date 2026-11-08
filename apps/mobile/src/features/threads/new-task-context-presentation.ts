@@ -155,8 +155,8 @@ export function fillNewTaskWorkspaceBranch(input: {
 /**
  * The workspace a new-task draft starts in: its own selection, else the
  * project's default mode, with the branch filled in as above. The new-task
- * flow, its send path and the home pending-drafts list all resolve through
- * this, so what each shows is what is sent.
+ * flow and its send path resolve through this, so the workspace shown is the
+ * workspace that will be used when the task starts.
  */
 export function resolveNewTaskDraftWorkspace(input: {
   readonly selection: ComposerDraftWorkspaceSelection | undefined;

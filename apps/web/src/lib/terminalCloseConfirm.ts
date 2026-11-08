@@ -8,7 +8,9 @@ export function isTerminalCloseConfirmPending(): boolean {
 
 export async function confirmTerminalClose(
   labels: readonly [string, ...string[]],
+  options: { readonly isPristine?: boolean } = {},
 ): Promise<boolean> {
+  if (options.isPristine === true) return true;
   const localApi = readLocalApi();
   if (!localApi) return true;
   pendingConfirmations += 1;

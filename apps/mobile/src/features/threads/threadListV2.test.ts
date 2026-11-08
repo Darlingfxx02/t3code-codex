@@ -740,29 +740,10 @@ describe("buildThreadListV2ListItems", () => {
     now: NOW,
   });
 
-  it("leads the list with unsent drafts and queued tasks, preserving section dividers", () => {
+  it("leads the list with queued tasks, preserving section dividers", () => {
     const items = buildThreadListV2ListItems({
       items: layout.items,
-      pendingTasks: [
-        {
-          kind: "draft",
-          key: "draft-task:new-task:unsent",
-          environmentId,
-          projectId: ProjectId.make("project-1"),
-          projectTitle: undefined,
-          projectCwd: undefined,
-          title: "unsent",
-          createdAt: NOW,
-          draftKey: "new-task:unsent",
-          draft: {
-            text: "unsent",
-            attachments: [],
-            project: { environmentId, projectId: ProjectId.make("project-1"), createdAt: NOW },
-          },
-        },
-        makePendingTask("queued-1"),
-        makePendingTask("queued-2"),
-      ],
+      pendingTasks: [makePendingTask("queued-1"), makePendingTask("queued-2")],
       settledCount: layout.settledCount,
       settledShelfHeaderIndex: layout.settledShelfHeaderIndex,
     });
@@ -777,15 +758,15 @@ describe("buildThreadListV2ListItems", () => {
               ? "snoozed-shelf"
               : "settled-shelf",
       ),
-    ).toEqual(["unsent", "queued-1", "queued-2", "active", "settled-shelf", "settled"]);
+    ).toEqual(["queued-1", "queued-2", "active", "settled-shelf", "settled"]);
     expect(
       items.flatMap((item) => (item.type === "v2-pending" ? [item.showPendingDivider] : [])),
-    ).toEqual([true, false, false]);
+    ).toEqual([true, false]);
     expect(
       items.map((item) =>
         item.type === "v2-thread" || item.type === "v2-pending" ? item.showTrailingDivider : null,
       ),
-    ).toEqual([true, true, true, false, null, false]);
+    ).toEqual([true, true, false, null, false]);
   });
 
   it("places queued tasks above active rows and a collapsed snoozed shelf", () => {

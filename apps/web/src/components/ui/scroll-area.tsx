@@ -36,14 +36,22 @@ function ScrollArea({
   scrollbarGutter?: boolean;
   hideScrollbars?: boolean;
   chainVerticalScroll?: boolean;
-  radius?: "inherit" | "none";
+  radius?: "inherit" | "none" | "floating-inner" | "dialog-inner" | "dialog-sheet-inner";
   viewportTabIndex?: number;
 }) {
   return (
     <ScrollAreaPrimitive.Root
       className={cn(
         "relative size-full min-h-0 overflow-hidden",
-        radius === "none" ? "rounded-none" : "rounded-[inherit]",
+        radius === "none"
+          ? "rounded-none"
+          : radius === "floating-inner"
+            ? "rounded-(--floating-inner-radius)"
+            : radius === "dialog-inner"
+              ? "rounded-(--dialog-inner-radius)"
+              : radius === "dialog-sheet-inner"
+                ? "rounded-(--dialog-inner-radius) max-sm:rounded-b-none"
+                : "rounded-[inherit]",
         className,
       )}
       {...props}

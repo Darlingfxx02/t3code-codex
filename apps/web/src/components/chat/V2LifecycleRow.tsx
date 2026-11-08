@@ -36,10 +36,8 @@ import {
   type NodeId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
-import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   BotIcon,
-  ChevronRightIcon,
   CircleStopIcon,
   ArrowRightLeftIcon,
   ArrowRightIcon,
@@ -55,7 +53,6 @@ import {
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
-import { formatShortTimestamp } from "../../timestampFormat";
 import { getTriggerDisplayModelName } from "./providerIconUtils";
 import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon";
 import { cn } from "~/lib/utils";
@@ -203,10 +200,6 @@ function plainDetail(text: string): string {
     .trim();
 }
 
-function isoOrNull(value: DateTime.Utc | null | undefined): string | null {
-  return value ? DateTime.formatIso(value) : null;
-}
-
 export function SubagentElapsed({ agent }: { agent: Parameters<typeof AgentElapsed>[0]["agent"] }) {
   return <AgentElapsed agent={agent} />;
 }
@@ -347,7 +340,6 @@ export function SubagentNotificationLink(props: {
   readonly taskIds?: ReadonlyArray<NodeId> | undefined;
   readonly outcome: OrchestrationV2Notification["outcome"];
   readonly createdAt: string;
-  readonly timestampFormat: TimestampFormat;
   readonly onOpenThread: (threadId: ThreadId) => void;
   readonly fallback: ReactNode;
 }) {
@@ -386,7 +378,6 @@ export function SubagentNotificationLink(props: {
             event: {
               status: NOTIFICATION_OUTCOME_STATUS[props.outcome],
               label: NOTIFICATION_OUTCOME_LABEL[props.outcome],
-              timestamp: formatShortTimestamp(props.createdAt, props.timestampFormat),
             },
           })}
     />
@@ -412,7 +403,6 @@ function SubagentTimelineLink(props: {
   readonly event?: {
     readonly status: OrchestrationV2TurnItem["status"] | null;
     readonly label: string;
-    readonly timestamp: string;
   };
 }) {
   const agent = useAtomValue(
@@ -444,11 +434,6 @@ function SubagentTimelineLink(props: {
   const detail =
     rawDetail && !GENERIC_CHILD_END.test(rawDetail) ? plainDetail(rawDetail) || null : null;
   const failed = status === "failed";
-  const timing = {
-    status: liveStatus,
-    startedAt: isoOrNull(agent?.startedAt ?? props.startedAt),
-    completedAt: isoOrNull(agent?.completedAt ?? props.completedAt),
-  };
   const content = (
     <>
       <EnvironmentSubagentAvatar
@@ -464,13 +449,17 @@ function SubagentTimelineLink(props: {
             {props.title}
           </span>
           {remote !== undefined ? (
-            <span className="shrink-0 text-xs text-muted-foreground">on {remote.label}</span>
+            <span className="shrink-0 text-xs text-muted-foreground group-hover/subagent:text-foreground">
+              on {remote.label}
+            </span>
           ) : null}
         </span>
         <span
           className={cn(
             "block text-2xs leading-relaxed",
-            failed ? "text-destructive" : "text-muted-foreground",
+            failed
+              ? "text-destructive"
+              : "text-muted-foreground group-hover/subagent:text-foreground",
           )}
         >
           {detail === null ? (
@@ -482,22 +471,6 @@ function SubagentTimelineLink(props: {
           )}
         </span>
       </span>
-      {detail !== null && (props.event !== undefined || status !== "completed") ? (
-        <span
-          className={cn("shrink-0 text-xs", failed ? "text-destructive" : "text-muted-foreground")}
-        >
-          {statusLabel}
-        </span>
-      ) : null}
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        {props.event ? props.event.timestamp : <SubagentElapsed agent={timing} />}
-      </span>
-      {open !== null ? (
-        <ChevronRightIcon
-          aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover/subagent:text-foreground"
-        />
-      ) : null}
     </>
   );
   const className =
@@ -520,7 +493,7 @@ function SubagentTimelineLink(props: {
               onClick={open}
               className={cn(
                 className,
-                "cursor-pointer transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+                "cursor-pointer transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
               )}
             >
               {content}

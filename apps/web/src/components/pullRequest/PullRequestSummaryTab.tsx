@@ -244,7 +244,7 @@ function CollapsedComment({
             ) : null}
             <CollapsibleTrigger
               ref={statusTriggerRef}
-              className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-interactive-row-hover hover:text-foreground"
             >
               {label}
               <ChevronDownIcon
@@ -812,7 +812,7 @@ export function PullRequestSummaryTab({
                 return (
                   <div
                     key={`${index}:${check.name}:${check.url ?? ""}`}
-                    className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
+                    className="group flex items-center gap-2 rounded-md pr-1 hover:bg-interactive-row-hover"
                   >
                     <button
                       type="button"

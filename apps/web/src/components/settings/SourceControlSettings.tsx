@@ -232,7 +232,7 @@ function DiscoveryItemRow({
   return (
     <div
       className={cn(
-        "first:rounded-t-xl last:rounded-b-xl transition-colors hover:bg-muted/20",
+        "first:rounded-t-xl last:rounded-b-xl transition-colors hover:bg-interactive-row-hover",
         isVcsNotReady(item) && "opacity-80",
       )}
     >

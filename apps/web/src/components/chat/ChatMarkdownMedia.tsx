@@ -21,9 +21,12 @@ import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { markdownImageGallery, markdownImageItems } from "./markdownImageGallery";
 
-const CHAT_MARKDOWN_MEDIA_MAX_WIDTH_CLASS_NAME = "max-w-[min(100%,30rem)]";
+// Keep inline media glanceable in the conversation; the full-resolution viewer
+// remains available through the existing click-to-expand interaction.
+const CHAT_MARKDOWN_MEDIA_MAX_SIZE_REM = 18;
+const CHAT_MARKDOWN_MEDIA_MAX_WIDTH_CLASS_NAME = "max-w-[min(100%,18rem)]";
 const CHAT_MARKDOWN_MEDIA_BOUNDS_CLASS_NAME = cn(
-  "max-h-[30rem]",
+  "max-h-[18rem]",
   CHAT_MARKDOWN_MEDIA_MAX_WIDTH_CLASS_NAME,
 );
 const CHAT_MARKDOWN_MEDIA_LAYOUT_CLASS_NAME = "inline-block!";
@@ -48,7 +51,7 @@ export function markdownImageCopy(alt: string, src: string, title: string | unde
 export function authoredImageSizeStyle(
   width: string | number | undefined,
   height: string | number | undefined,
-  maxHeightRem = 30,
+  maxHeightRem = CHAT_MARKDOWN_MEDIA_MAX_SIZE_REM,
 ): CSSProperties | undefined {
   const parsedWidth = Number(width);
   const parsedHeight = Number(height);
@@ -59,11 +62,15 @@ export function authoredImageSizeStyle(
       width: parsedWidth,
       height: "auto",
       aspectRatio: `${parsedWidth} / ${parsedHeight}`,
-      maxWidth: `min(100%, 30rem, ${(maxHeightRem * parsedWidth) / parsedHeight}rem)`,
+      maxWidth: `min(100%, ${CHAT_MARKDOWN_MEDIA_MAX_SIZE_REM}rem, ${(maxHeightRem * parsedWidth) / parsedHeight}rem)`,
     };
   }
-  if (hasWidth) return { maxWidth: `min(100%, 30rem, ${parsedWidth}px)` };
-  if (hasHeight) return { maxHeight: `min(30rem, ${parsedHeight}px)` };
+  if (hasWidth)
+    return {
+      maxWidth: `min(100%, ${CHAT_MARKDOWN_MEDIA_MAX_SIZE_REM}rem, ${parsedWidth}px)`,
+    };
+  if (hasHeight)
+    return { maxHeight: `min(${CHAT_MARKDOWN_MEDIA_MAX_SIZE_REM}rem, ${parsedHeight}px)` };
   return undefined;
 }
 
@@ -374,12 +381,12 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
         ? null
         : fallbackSrc + (props.srcFragment ?? "");
   const knownSize = assetUrl._tag === "Success" ? assetUrl.imageDimensions : undefined;
-  const maxHeightRem = props.maxHeightRem ?? 30;
+  const maxHeightRem = props.maxHeightRem ?? CHAT_MARKDOWN_MEDIA_MAX_SIZE_REM;
   const style =
     props.style ??
     (knownSize
       ? authoredImageSizeStyle(knownSize.width, knownSize.height, maxHeightRem)
-      : maxHeightRem !== 30
+      : maxHeightRem !== CHAT_MARKDOWN_MEDIA_MAX_SIZE_REM
         ? { maxHeight: `${maxHeightRem}rem` }
         : undefined);
   const actionsSource: MediaActionSource = {

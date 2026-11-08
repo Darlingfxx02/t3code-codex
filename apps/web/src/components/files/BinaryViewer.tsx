@@ -310,7 +310,7 @@ export default function BinaryViewer(props: {
                 .map((item) => (
                   <tr
                     key={`${item.path}${item.directory ? "/" : ""}`}
-                    className="hover:bg-muted/40"
+                    className="hover:bg-interactive-row-hover"
                   >
                     <td className="max-w-0 border-b border-border/60">
                       <button

@@ -1,6 +1,7 @@
 import { DEFAULT_CLIENT_SETTINGS, EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
+import type { ReactNode } from "react";
 
 import { render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -18,7 +19,7 @@ vi.mock("../commandPaletteBus", () => ({
   isCommandPaletteOpen: () => false,
 }));
 vi.mock("./sidebar/SidebarChrome", () => ({
-  SidebarChromeHeader: () => null,
+  SidebarChromeHeader: ({ actions }: { actions?: ReactNode }) => <>{actions}</>,
   SidebarChromeFooter: () => null,
 }));
 
@@ -38,9 +39,9 @@ function project(id: string): Project {
 
 describe("sidebar header new thread", () => {
   it.each([
-    { mode: "normal", count: 2, shift: false, picker: true },
-    { mode: "boring", count: 2, shift: false, picker: true },
-    { mode: "boring", count: 2, shift: true, picker: false },
+    { mode: "normal", count: 2, shift: false, picker: false },
+    { mode: "boring", count: 2, shift: false, picker: false },
+    { mode: "boring", count: 2, shift: true, picker: true },
     { mode: "boring", count: 1, shift: false, picker: false },
     { mode: "legacy", count: 2, shift: false, picker: false },
   ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
@@ -73,6 +74,11 @@ describe("sidebar header new thread", () => {
         <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
       </SidebarProvider>,
     );
+
+    const projectFilter = () =>
+      screen.container.querySelector('[aria-label="Filter threads by project"]');
+    if (scenario.mode === "boring") expect(projectFilter()).not.toBeNull();
+    else expect(projectFilter()).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "New thread", exact: true }), {
       modifiers: scenario.shift ? ["Shift"] : [],

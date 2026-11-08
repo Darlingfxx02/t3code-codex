@@ -12,6 +12,7 @@ import { page, userEvent } from "vite-plus/test/browser";
 import { render } from "../../../test/render";
 import { ComposerEffortColumn, describeComposerEffort } from "./ComposerModelEffort";
 import type { TraitsSelectionInput } from "./TraitsPicker";
+import { DockedPickerContext } from "./ProviderModelPicker";
 
 // Shaped like Devin over ACP: its session mode comes first, and its reasoning id is its own.
 const models: ReadonlyArray<ServerProviderModel> = [
@@ -122,4 +123,62 @@ it("draws an agent's reasoning as bars and keeps its mode out of the levels", as
     .element(screen.getByRole("button", { name: "Session Mode: Plan" }))
     .toBeInTheDocument();
   await expect.element(page.getByRole("menuitemradio")).not.toBeInTheDocument();
+});
+
+it("persists compact reasoning changes and resets to the model's default", async () => {
+  const model = {
+    slug: "gpt-model",
+    name: "GPT model",
+    isCustom: false,
+    capabilities: createModelCapabilities({
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select",
+          currentValue: "medium",
+          options: [
+            { id: "low", label: "Low" },
+            { id: "medium", label: "Medium", isDefault: true },
+            { id: "high", label: "High" },
+          ],
+        },
+      ],
+    }),
+  };
+  function Compact() {
+    const [options, setOptions] = useState<ReadonlyArray<ProviderOptionSelection>>([]);
+    return (
+      <DockedPickerContext value={{ modelLabel: model.name, onChooseModel: () => {} }}>
+        <ComposerEffortColumn
+          traits={{
+            provider: ProviderDriverKind.make("codex"),
+            instanceId: ProviderInstanceId.make("codex"),
+            models: [model],
+            model: model.slug,
+            modelOptions: options,
+            planModeEnabled: false,
+            onModelOptionsChange: (next) => setOptions(next ?? []),
+          }}
+        />
+        <output aria-label="Saved reasoning">
+          {options.find((option) => option.id === "reasoningEffort")?.value}
+        </output>
+      </DockedPickerContext>
+    );
+  }
+  await using screen = await render(<Compact />, { router: false }); // only local option persistence
+  const slider = screen.getByRole("slider", { name: "Reasoning" });
+  await expect.element(slider).toHaveAttribute("aria-valuetext", "Medium");
+  await slider.click();
+  await userEvent.keyboard("{End}");
+  await expect.element(slider).toHaveAttribute("aria-valuetext", "High");
+  await expect
+    .element(screen.getByRole("status", { name: "Saved reasoning" }))
+    .toHaveTextContent("high");
+  await screen.getByRole("button", { name: "Reset reasoning level" }).click();
+  await expect.element(slider).toHaveAttribute("aria-valuetext", "Medium");
+  await expect
+    .element(screen.getByRole("status", { name: "Saved reasoning" }))
+    .toHaveTextContent("medium");
 });

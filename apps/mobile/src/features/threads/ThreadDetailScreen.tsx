@@ -1442,6 +1442,7 @@ function ThreadDetailBody(
               <ThreadFeed
                 environmentId={props.environmentId}
                 threadId={props.selectedThread.id}
+                composerDraftKey={props.composerDraftKey}
                 detailRef={props.selectedThreadDetailRef}
                 workspaceRoot={props.threadCwd}
                 feed={props.selectedThreadFeed}

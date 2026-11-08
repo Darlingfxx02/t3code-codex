@@ -29,10 +29,12 @@ import {
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
   workLogEntryIsToolLike,
+  isProviderCapacityError,
 } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
-import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
+import { CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
+import { T3Wordmark } from "../T3Wordmark";
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useThreadShell } from "../../state/entities";
@@ -47,13 +49,14 @@ import { cn } from "~/lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
 import { SubagentNotificationLink } from "./V2LifecycleRow";
+import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import {
   TimelineRowCtx,
   TimelineRowActivityCtx,
   WorkGroupViewCtx,
   type TimelineWorkEntry,
 } from "./timelineRowContext";
-import { MESSAGE_HEADING_LEVEL, TimelineRowTimestamp } from "./TimelineRowParts";
+import { MESSAGE_HEADING_LEVEL } from "./TimelineRowParts";
 import {
   failedToolIconClassName,
   toolIconAcceptsTint,
@@ -126,7 +129,6 @@ export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<Time
       {entries.map((entry) => (
         <ChatMarkdown
           key={entry.id}
-          className="text-foreground"
           text={entry.detail ?? ""}
           cwd={ctx.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}
@@ -164,7 +166,6 @@ export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEn
       taskIds={item.source.kind === "delegated_task" ? item.source.taskIds : undefined}
       outcome={item.outcome}
       createdAt={props.workEntry.createdAt}
-      timestampFormat={ctx.timestampFormat}
       onOpenThread={ctx.onOpenThread}
       fallback={<WorkEntryLogRow {...props} />}
     />
@@ -175,7 +176,13 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const { workEntry, workspaceRoot, displayLabel } = props;
   const ctx = use(TimelineRowCtx);
   const { threadRef, onImageExpand, timestampFormat } = ctx;
-  const { retryableWorkspacePreparationRunIds, onRetryWorkspacePreparation } = ctx;
+  const {
+    retryableWorkspacePreparationRunIds,
+    onRetryWorkspacePreparation,
+    onRetryProviderError,
+    autoRetryCapacityErrors,
+    onSetAutoRetryCapacityErrors,
+  } = ctx;
   const threadTarget = useThreadReadTarget(workEntry, ctx.activeThreadEnvironmentId);
   const createdThread =
     workEntry.projectedItem?.item.type === "thread_created"
@@ -206,7 +213,75 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? ctx.pendingApprovals.get(failureItem.requestId)
       : undefined;
   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
-  if (failureItem?.type === "error" && failureItem.status === "failed") {
+  if (
+    workEntry.structuredPayload?.type === "notification" &&
+    workEntry.structuredPayload.summary === "Restarted"
+  ) {
+    return <TimelineSystemDivider label="Restarted" icon={T3Wordmark} />;
+  }
+  if (
+    failureItem?.type === "error" &&
+    (failureItem.status === "failed" || isProviderCapacityError(failureItem))
+  ) {
+    const capacity = isProviderCapacityError(failureItem);
+    if (capacity) {
+      const retryable = failureItem.failure.retryable !== false;
+      const retrying = failureItem.status === "running";
+      const recovered = failureItem.status === "completed";
+      const label = retrying
+        ? "Model at capacity · retrying automatically"
+        : recovered
+          ? "Model recovered"
+          : "Model at capacity";
+      return (
+        <WorkLogRow
+          data-v2-item-type="error"
+          data-v2-capacity-event="true"
+          data-v2-item-visibility={workEntry.projectedItem?.visibility}
+          wrapLabel
+          icon={<CircleAlertIcon className="size-4 text-warning" />}
+          label={<span className="text-sm font-medium text-warning">{label}</span>}
+        >
+          <div className="ms-7 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2 text-sm">
+            <p className="whitespace-pre-wrap break-words leading-relaxed text-foreground/85">
+              {retrying
+                ? "T3 will retry this request automatically."
+                : recovered
+                  ? "The selected model is available again."
+                  : "The selected model is busy. Try a different model or retry this request."}
+            </p>
+            {!retrying && !recovered && retryable && failureItem.runId !== null ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {onRetryProviderError ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    onClick={() => onRetryProviderError(failureItem.runId!)}
+                  >
+                    <RotateCcwIcon aria-hidden />
+                    Retry
+                  </Button>
+                ) : null}
+                {onSetAutoRetryCapacityErrors && onRetryProviderError ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    aria-pressed={autoRetryCapacityErrors}
+                    onClick={() => {
+                      onSetAutoRetryCapacityErrors(!autoRetryCapacityErrors);
+                    }}
+                  >
+                    {autoRetryCapacityErrors ? "Auto-retry on" : "Retry automatically"}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </WorkLogRow>
+      );
+    }
     const warning = failureItem.failure.class === "usage_limit";
     const resetAt = failureItem.failure.resetAt;
     // The reset time is the viewer's local time; naming the zone keeps it
@@ -240,13 +315,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           >
             {label}
           </span>
-        }
-        trailing={
-          <TimelineRowTimestamp
-            createdAt={workEntry.createdAt}
-            timestampFormat={timestampFormat}
-            alwaysVisible
-          />
         }
       >
         {!warning ? (
@@ -362,9 +430,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         ? "text-destructive"
         : showFailedIndicator
           ? failedToolIconClassName
-          : workEntry.tone === "tool"
-            ? "text-icon-muted"
-            : iconConfig.className,
+          : entryIconName === "terminal" && workLogEntryIsToolLike(workEntry)
+            ? "text-secondary-label"
+            : workEntry.tone === "tool"
+              ? "text-icon-muted"
+              : iconConfig.className,
   );
   const headingClass = showWarningIndicator
     ? "font-medium text-warning"
@@ -401,6 +471,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       data-v2-item-type={workEntry.projectedItem?.item.type}
       data-v2-item-visibility={workEntry.projectedItem?.visibility}
       {...rowToggleProps}
+      iconClassName={entryIconName === "terminal" ? "ps-0.5" : undefined}
       icon={
         <span
           className={iconWrapperClass}
@@ -493,21 +564,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           !toolIconAcceptsTint(entryToolIcon) ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
           ) : null}
-          <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
-          <span
-            className={cn(
-              "flex size-4 shrink-0 items-center justify-center",
-              !canExpandProjectedItem && "invisible",
-            )}
-            aria-hidden
-          >
-            <ChevronRightIcon
-              className={cn(
-                "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
-                expanded && "rotate-90",
-              )}
-            />
-          </span>
         </>
       }
     >

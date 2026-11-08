@@ -116,6 +116,8 @@ export const TerminalSummary = Schema.Struct({
   exitCode: Schema.NullOr(Schema.Int),
   exitSignal: Schema.NullOr(Schema.Int),
   hasRunningSubprocess: Schema.Boolean,
+  // Only current servers can prove that this terminal has never received input or restored history.
+  isPristine: Schema.optional(Schema.Boolean),
   label: Schema.String.check(Schema.isMaxLength(128)),
   updatedAt: Schema.String,
 });

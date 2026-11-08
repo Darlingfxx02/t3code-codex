@@ -115,7 +115,7 @@ export function DeviceSetupDialogHost(props: {
         if (!nextOpen) closeThreadOverlay(deviceSetupDialogAtom);
       }}
     >
-      <WizardPopup>
+      <WizardPopup size="full">
         {threadRef ? (
           <DeviceSetup
             environmentId={threadRef.environmentId}

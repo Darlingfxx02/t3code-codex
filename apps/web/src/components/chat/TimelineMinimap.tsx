@@ -251,7 +251,7 @@ export function TimelineMinimap({
                   transform: `translateY(${activeTooltipTranslate})`,
                 }}
               >
-                <span className="dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25">
+                <span className="dropdown-glass block rounded-(--floating-radius) p-3 text-left text-popover-foreground">
                   <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
                     {activeItem.userText ?? "User message"}
                   </span>
@@ -319,9 +319,9 @@ function TimelineMinimapNavigationButton({
           onClick={onClick}
           size="icon-micro"
           type="button"
-          variant="ghost-muted"
+          variant="ghost-muted-plain"
         >
-          <Icon className="size-4 text-foreground/90" />
+          <Icon className="size-4" />
         </Button>
       </TooltipTrigger>
       <TooltipPopup side={previous ? "top" : "bottom"}>{label}</TooltipPopup>

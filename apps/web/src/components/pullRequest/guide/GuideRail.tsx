@@ -71,7 +71,9 @@ function RailRow({
       onClick={onClick}
       className={cn(
         "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-        active ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+        active
+          ? "bg-interactive-row-active text-accent-foreground"
+          : "hover:bg-interactive-row-hover",
       )}
     >
       {lead}

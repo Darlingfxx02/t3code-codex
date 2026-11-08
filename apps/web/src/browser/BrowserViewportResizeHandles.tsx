@@ -4,6 +4,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { ResizeGlow, useResizeGlow } from "~/components/ResizeGlow";
 import { cn } from "~/lib/utils";
 
 import {
@@ -54,15 +55,36 @@ function ResizeHandle(props: {
     onPointerDown,
     onKeyDown,
   } = props;
+  const glowAxis =
+    kind === "vertical" ? "vertical" : kind === "horizontal" ? "horizontal" : "diagonal";
+  const {
+    ref: glowRef,
+    onPointerCancel: cancelGlow,
+    onPointerDown: showGlow,
+    onPointerEnter: enterGlow,
+    onPointerLeave: leaveGlow,
+    onPointerMove: moveGlow,
+    onPointerUp: endGlow,
+  } = useResizeGlow(glowAxis);
   return (
     <button
       type="button"
       aria-label={`${label}. Use arrow keys to resize.`}
       className={cn(EDGE_BUTTON_CLASS, kind === "corner" && "z-30", cursorClassName)}
       style={style}
-      onPointerDown={(event) => onPointerDown(direction, event)}
+      onPointerDown={(event) => {
+        showGlow(event);
+        onPointerDown(direction, event);
+      }}
+      onPointerEnter={enterGlow}
+      onPointerLeave={leaveGlow}
+      onPointerMove={moveGlow}
+      onPointerUp={endGlow}
+      onPointerCancel={cancelGlow}
+      onLostPointerCapture={cancelGlow}
       onKeyDown={(event) => onKeyDown(direction, event)}
     >
+      <ResizeGlow ref={glowRef} axis={glowAxis} />
       <span
         className={cn(
           EDGE_GRIP_CLASS,

@@ -130,6 +130,25 @@ describe("makeMcpAppHost", () => {
     expect(sent.find((m) => m.id === 2)?.result).toEqual({ content: [] });
   });
 
+  it("preserves array structured content used by search result apps", () => {
+    const { host, sent } = setup();
+    initialize(host);
+    host.setToolCall({
+      arguments: { query: "design references" },
+      result: {
+        content: [],
+        structuredContent: [{ title: "Reference", url: "https://example.test/reference" }],
+      },
+    });
+
+    expect(
+      sent.find((message) => message.method === "ui/notifications/tool-result")?.params,
+    ).toEqual({
+      content: [],
+      structuredContent: [{ title: "Reference", url: "https://example.test/reference" }],
+    });
+  });
+
   it("sends a later result for a call that had none, without repeating its input", () => {
     const { host, sent } = setup();
     initialize(host);

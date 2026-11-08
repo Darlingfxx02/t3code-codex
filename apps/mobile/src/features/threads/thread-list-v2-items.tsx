@@ -49,12 +49,6 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useEnvironmentScope } from "../../state/session";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
-  pendingDraftBranchNeedsRefs,
-  resolvePendingDraftBranch,
-} from "../../state/pending-new-tasks-model";
-import { useBranches } from "../../state/queries";
-import { useNewTaskProjectDefaults } from "./use-new-task-project-defaults";
-import {
   resolveThreadPrBadgeAction,
   type ThreadPrPresentation,
 } from "../../state/thread-pr-presentation";
@@ -341,10 +335,6 @@ const PENDING_TASK_MENU_ACTIONS: MenuAction[] = [
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
 ];
 
-const DRAFT_TASK_MENU_ACTIONS: MenuAction[] = [
-  { id: "delete", title: "Discard", image: "trash", attributes: { destructive: true } },
-];
-
 export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props: {
   readonly pendingTask: PendingNewTask;
   readonly selected?: boolean;
@@ -380,8 +370,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   const sidebarPane = props.pane === "sidebar";
   const selected = props.selected ?? false;
   const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected);
-  const isDraft = pendingTask.kind === "draft";
-  const deleteLabel = isDraft ? "Discard" : "Delete";
+  const deleteLabel = "Delete";
   const handleDelete = useCallback(
     () => onDeletePendingTask(pendingTask),
     [onDeletePendingTask, pendingTask],
@@ -397,28 +386,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
     [deleteLabel, handleDelete, pendingTask.title],
   );
   const projectTitle = props.projectTitle ?? props.project?.title ?? pendingTask.projectTitle ?? "";
-  const projectCwd = props.project?.workspaceRoot || null;
-  // Drafts only; the reads are shared per-project atoms, and queued rows skip them.
-  const projectDefaults = useNewTaskProjectDefaults(isDraft ? props.project : null);
-  const draftDefaults = {
-    canChooseWorkspace: !projectDefaults.isScratch,
-    defaultMode: projectDefaults.defaultWorkspaceMode,
-    defaultModeSettled: projectDefaults.defaultWorkspaceModeSettled,
-  };
-  const draftBranchRefs = useBranches({
-    environmentId: pendingTask.environmentId,
-    cwd:
-      isDraft && pendingDraftBranchNeedsRefs(pendingTask.draft, draftDefaults) ? projectCwd : null,
-  });
-  const branch = isDraft
-    ? resolvePendingDraftBranch({
-        draft: pendingTask.draft,
-        defaults: draftDefaults,
-        isGitRepo: draftBranchRefs.data?.isRepo ?? true,
-        branches: draftBranchRefs.data?.refs ?? [],
-        projectCwd,
-      })
-    : pendingTask.branch;
+  const branch = pendingTask.branch;
 
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
@@ -464,46 +432,19 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
         >
           {pendingTask.title}
         </Text>
-        {isDraft ? (
-          <View className="flex-row items-center gap-1" style={{ minHeight: titleLineHeight }}>
-            <SymbolView
-              name="square.and.pencil"
-              size={13}
-              tintColorClassName={
-                selected
-                  ? selectedThreadRowColors.iconTintClassName
-                  : "accent-adaptive-amber-700-300"
-              }
-              type="monochrome"
-              weight="semibold"
-            />
-            <Text
-              className={cn(
-                "text-xs font-t3-bold",
-                selected
-                  ? selectedThreadRowColors.foregroundClassName
-                  : "text-adaptive-amber-700-300",
-              )}
-            >
-              Draft
-            </Text>
-          </View>
-        ) : null}
       </View>
-      {!isDraft ? (
-        <View className="mt-1" style={{ paddingLeft: titleTextInset }}>
-          <Text
-            className={cn(
-              "text-xs",
-              selected
-                ? selectedThreadRowColors.foregroundClassName
-                : rowAppearance.tertiaryForegroundClassName,
-            )}
-          >
-            Sends on reconnect
-          </Text>
-        </View>
-      ) : null}
+      <View className="mt-1" style={{ paddingLeft: titleTextInset }}>
+        <Text
+          className={cn(
+            "text-xs",
+            selected
+              ? selectedThreadRowColors.foregroundClassName
+              : rowAppearance.tertiaryForegroundClassName,
+          )}
+        >
+          Sends on reconnect
+        </Text>
+      </View>
       {branch || props.environmentLabel ? (
         <View className="mt-1 flex-row items-center gap-1" style={{ paddingLeft: titleTextInset }}>
           {props.environmentLabel && props.environmentMachine ? (
@@ -582,16 +523,12 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
       >
         {() => (
           <Menu
-            actions={isDraft ? DRAFT_TASK_MENU_ACTIONS : PENDING_TASK_MENU_ACTIONS}
+            actions={PENDING_TASK_MENU_ACTIONS}
             onPressAction={handleMenuAction}
             shouldOpenOnLongPress
           >
             <RowPressable
-              accessibilityHint={
-                isDraft
-                  ? `Opens the draft in the new task composer. Swipe left to ${deleteLabel.toLowerCase()}.`
-                  : `Sends when the environment reconnects. Opens the task for editing. Swipe left to ${deleteLabel.toLowerCase()}.`
-              }
+              accessibilityHint={`Sends when the environment reconnects. Opens the task for editing. Swipe left to ${deleteLabel.toLowerCase()}.`}
               accessibilityLabel={pendingTask.title}
               accessibilityRole="button"
               accessibilityState={{ selected: props.selected ?? false }}

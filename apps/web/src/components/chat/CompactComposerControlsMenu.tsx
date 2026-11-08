@@ -1,51 +1,28 @@
-import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
-import { memo, useRef } from "react";
+import { ProviderInteractionMode } from "@t3tools/contracts";
+import { memo } from "react";
 import { EllipsisIcon } from "lucide-react";
-import {
-  Menu,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator as MenuDivider,
-  MenuTrigger,
-} from "../ui/menu";
+import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
-import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
+import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
-import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFooterControls";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   interactionMode: ProviderInteractionMode;
-  runtimeMode: RuntimeMode;
-  runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   showInteractionModeToggle: boolean;
-  showPermissions?: boolean;
   size?: "sm" | "xs";
   /** Close the portaled popup when its trigger hides. */
   hidden?: boolean;
   onToggleInteractionMode: () => void;
-  onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <Menu
-      open={open}
-      onOpenChange={setOpen}
-      onOpenChangeComplete={(isOpen) => focusRequestedPermission(isOpen, triggerRef.current)}
-    >
+    <Menu open={open} onOpenChange={setOpen}>
       <MenuTrigger
         render={
-          <ComposerControl
-            ref={triggerRef}
-            size={size}
-            className="shrink-0"
-            aria-label="More composer controls"
-            data-composer-shortcut={props.showPermissions !== false ? "composer.mode" : undefined}
-          />
+          <ComposerControl size={size} className="shrink-0" aria-label="More composer controls" />
         }
       >
         <ComposerControlIcon icon={EllipsisIcon} size={size} />
@@ -64,16 +41,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
               <MenuRadioItem value="default">Chat</MenuRadioItem>
               <MenuRadioItem value="plan">Plan</MenuRadioItem>
             </MenuRadioGroup>
-            {props.showPermissions !== false ? <MenuDivider /> : null}
           </>
         ) : null}
-        {props.showPermissions === false ? null : (
-          <ComposerPermissionsSection
-            runtimeMode={props.runtimeMode}
-            runtimeModeOptions={props.runtimeModeOptions}
-            onRuntimeModeChange={props.onRuntimeModeChange}
-          />
-        )}
       </MenuPopup>
     </Menu>
   );

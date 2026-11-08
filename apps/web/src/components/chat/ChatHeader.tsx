@@ -20,11 +20,11 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
+import { showContextMenuFallback } from "../../contextMenuFallback";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
-import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { canShareWithGuestAtom } from "./guestShareAvailability";
 import { useAtomValue } from "@effect/atom-react";
@@ -68,7 +68,7 @@ function resolveRenameCommit(input: {
   return { action: "commit", title: trimmed };
 }
 
-// Delay the input-swallowing native menu through the double-click rename interval.
+// Delay the input-swallowing title menu through the double-click rename interval.
 const TITLE_MENU_OPEN_DELAY_MS = 500;
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
@@ -255,16 +255,15 @@ export const ChatHeader = memo(function ChatHeader({
     cancelPendingTitleMenu();
     event.preventDefault();
     if (!isServerThread) {
-      const api = readLocalApi();
-      if (!api) return;
-      void api.contextMenu
-        .show([{ id: "project-settings", label: "Project settings", icon: "settings" }], {
+      void showContextMenuFallback(
+        [{ id: "project-settings", label: "Project settings", icon: "settings" }],
+        {
           x: event.clientX,
           y: event.clientY,
-        })
-        .then((action) => {
-          if (action === "project-settings") onOpenProjectSettings?.();
-        });
+        },
+      ).then((action) => {
+        if (action === "project-settings") onOpenProjectSettings?.();
+      });
       return;
     }
     openMenu({ x: event.clientX, y: event.clientY });

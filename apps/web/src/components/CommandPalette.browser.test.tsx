@@ -19,8 +19,16 @@ vi.mock("../state/entities", async (original) => ({
   useVisibleThreadShells: () => entities.threads,
 }));
 
-function setup(state: { projects?: ReadonlyArray<Project>; threads?: ReadonlyArray<Thread> } = {}) {
-  useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
+function setup(
+  state: {
+    projects?: ReadonlyArray<Project>;
+    threads?: ReadonlyArray<Thread>;
+  } = {},
+) {
+  useCommandPaletteStore.setState(
+    useCommandPaletteStore.getInitialState(),
+    true,
+  );
   entities.projects = state.projects ?? [];
   entities.threads = state.threads ?? [];
 }
@@ -41,7 +49,7 @@ describe("CommandPalette open intents", () => {
 
     openCommandPalette({ query: "acme" });
 
-    const input = page.getByPlaceholder("Search commands, projects, and threads...");
+    const input = page.getByPlaceholder("Search everything...");
     await expect.element(input).toHaveFocus();
     await expect.element(input).toHaveValue("acme");
   });
@@ -89,6 +97,8 @@ describe("CommandPalette open intents", () => {
     openCommandPalette({ query: "Acme" });
     await page.getByRole("option", { name: /Acme/ }).first().click();
 
-    await vi.waitFor(() => expect(screen.router?.state.location.pathname).toBe("/local/parent"));
+    await vi.waitFor(() =>
+      expect(screen.router?.state.location.pathname).toBe("/local/parent"),
+    );
   });
 });

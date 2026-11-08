@@ -72,6 +72,7 @@ interface ChatTerminalActionsInput {
   readonly runningTerminalIds: ReadonlyArray<string>;
   readonly activeServerOrderedTerminalIds: ReadonlyArray<string>;
   readonly activeTerminalLabelsById: ReadonlyMap<string, string>;
+  readonly terminalPristineById?: ReadonlyMap<string, boolean | undefined>;
   readonly panelTerminalIds: ReadonlySet<string>;
   readonly canReuseTerminal: boolean;
   readonly gitCwd: string | null;
@@ -96,6 +97,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     runningTerminalIds,
     activeServerOrderedTerminalIds,
     activeTerminalLabelsById,
+    terminalPristineById,
     panelTerminalIds,
     canReuseTerminal,
     gitCwd,
@@ -380,7 +382,10 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   const requestCloseTerminal = (terminalId: string) => {
     if (!hasTerminalWriteAccess()) return;
     const label = activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId);
-    void confirmTerminalClose([label]).then((confirmed) => {
+    void confirmTerminalClose(
+      [label],
+      terminalPristineById?.get(terminalId) === true ? { isPristine: true } : {},
+    ).then((confirmed) => {
       if (confirmed && readEnvironmentScope(environmentId, AuthTerminalOperateScope)) {
         closeTerminal(terminalId);
       }
@@ -390,7 +395,10 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   const requestClosePanelTerminal = (terminalId: string) => {
     if (!hasTerminalWriteAccess()) return;
     const label = activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId);
-    void confirmTerminalClose([label]).then((confirmed) => {
+    void confirmTerminalClose(
+      [label],
+      terminalPristineById?.get(terminalId) === true ? { isPristine: true } : {},
+    ).then((confirmed) => {
       if (confirmed && readEnvironmentScope(environmentId, AuthTerminalOperateScope)) {
         closePanelTerminal(terminalId);
       }

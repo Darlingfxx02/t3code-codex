@@ -40,12 +40,16 @@ export function DraftHeroProjectHeading({
           className="flex w-max items-baseline gap-2 whitespace-nowrap font-normal text-3xl tracking-tight"
         >
           <span>What should we build in</span>
-          <span>
-            <span className="font-medium">{projectName}</span>?
+          <span className="flex items-baseline">
+            <span className="flex items-baseline gap-1 font-medium">
+              <span className="size-[1em] shrink-0 self-center" />
+              <span>{projectName}</span>
+            </span>
+            ?
           </span>
         </span>
       </span>
-      <h1 className="flex w-full flex-col items-center justify-center gap-2 text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl lg:group-data-[inline=true]/draft-hero:flex-row">
+      <h1 className="flex w-full flex-col items-center justify-center gap-2 text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl lg:group-data-[inline=true]/draft-hero:flex-row lg:group-data-[inline=true]/draft-hero:items-baseline">
         <span className="max-w-full lg:group-data-[inline=true]/draft-hero:shrink-0">
           What should we build
           <span className="lg:group-data-[inline=true]/draft-hero:hidden">?</span>

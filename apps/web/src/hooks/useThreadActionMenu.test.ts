@@ -80,6 +80,10 @@ vi.mock("../localApi", () => ({
     },
   }),
 }));
+vi.mock("../contextMenuFallback", () => ({
+  dismissContextMenu: vi.fn(),
+  showContextMenuFallback: state.show,
+}));
 vi.mock("@t3tools/client-runtime/state/project-grouping", () => ({
   deriveLogicalProjectKeyFromSettings: () => "project",
   derivePhysicalProjectKey: () => "project",

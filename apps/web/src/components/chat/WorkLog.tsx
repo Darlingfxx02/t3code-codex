@@ -45,12 +45,13 @@ export function WorkLogList({ children }: { children: ReactNode }) {
 
 type RowContent = {
   icon?: ReactNode;
+  iconClassName?: string | undefined;
   label: ReactNode;
   trailing?: ReactNode;
   wrapLabel?: boolean;
 };
 
-function WorkLogLine({ icon, label, trailing, wrapLabel }: RowContent) {
+export function WorkLogLine({ icon, iconClassName, label, trailing, wrapLabel }: RowContent) {
   return (
     <div
       className={cn(
@@ -60,7 +61,7 @@ function WorkLogLine({ icon, label, trailing, wrapLabel }: RowContent) {
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
         {icon ? (
-          <span className="relative w-6 shrink-0 leading-0">
+          <span className={cn("relative w-6 shrink-0 leading-0", iconClassName)}>
             <span className="inline-block size-6 overflow-hidden align-[calc(0.5cap_-_0.75rem)]">
               <span className="flex size-full items-center justify-center">{icon}</span>
             </span>
@@ -68,7 +69,7 @@ function WorkLogLine({ icon, label, trailing, wrapLabel }: RowContent) {
         ) : null}
         <div
           className={cn(
-            "min-w-0 flex-1 text-secondary-label",
+            "min-w-0 flex-1 text-secondary-label group-hover/timeline-row:text-foreground",
             !wrapLabel && "truncate [&_*]:whitespace-nowrap",
           )}
         >
@@ -81,7 +82,7 @@ function WorkLogLine({ icon, label, trailing, wrapLabel }: RowContent) {
 }
 
 const interactionClassName =
-  "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70";
+  "cursor-pointer transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70";
 
 function useRowClassName(interactive: boolean) {
   const grouped = use(GroupedRows);
@@ -94,6 +95,7 @@ function useRowClassName(interactive: boolean) {
 
 export function WorkLogButton({
   icon,
+  iconClassName,
   label,
   trailing,
   wrapLabel = false,
@@ -102,7 +104,13 @@ export function WorkLogButton({
   const className = useRowClassName(true);
   return (
     <button {...buttonProps} type="button" className={className}>
-      <WorkLogLine icon={icon} label={label} trailing={trailing} wrapLabel={wrapLabel} />
+      <WorkLogLine
+        icon={icon}
+        iconClassName={iconClassName}
+        label={label}
+        trailing={trailing}
+        wrapLabel={wrapLabel}
+      />
     </button>
   );
 }
@@ -110,6 +118,7 @@ export function WorkLogButton({
 /** Div disclosure permits selectable detail and nested actions. */
 export function WorkLogRow({
   icon,
+  iconClassName,
   label,
   trailing,
   wrapLabel = false,
@@ -119,7 +128,13 @@ export function WorkLogRow({
   const className = useRowClassName(rowProps.onClick !== undefined);
   return (
     <div {...rowProps} className={className}>
-      <WorkLogLine icon={icon} label={label} trailing={trailing} wrapLabel={wrapLabel} />
+      <WorkLogLine
+        icon={icon}
+        iconClassName={iconClassName}
+        label={label}
+        trailing={trailing}
+        wrapLabel={wrapLabel}
+      />
       {children}
     </div>
   );

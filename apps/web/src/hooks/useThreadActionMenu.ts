@@ -43,6 +43,7 @@ import {
 } from "@t3tools/client-runtime/state/project-grouping";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
+import { dismissContextMenu, showContextMenuFallback } from "../contextMenuFallback";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
@@ -150,7 +151,7 @@ export function useThreadActionMenu(input: {
         canShareWithGuest,
         canTurnIntoProject: canTurnThreadIntoProject(threadRef),
       });
-      const clicked = await settlePromise(() => api.contextMenu.show(items, position));
+      const clicked = await settlePromise(() => showContextMenuFallback(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;
       const action: ThreadActionMenuId = clicked.value;
       if (
@@ -355,7 +356,7 @@ export function useThreadActionMenu(input: {
   };
 
   const closeMenu = () => {
-    void readLocalApi()?.contextMenu.close();
+    dismissContextMenu();
   };
 
   return { openMenu, closeMenu };

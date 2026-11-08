@@ -18,6 +18,8 @@ export function useVoiceInputController(input: {
   readonly subscribeToDraftChanges: (onChange: () => void) => () => void;
   readonly selection: ComposerEditorSelection;
   readonly disabled?: boolean;
+  /** Cancel an active recording when this transient owner leaves the screen. */
+  readonly cancelOnUnmount?: boolean;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onChangeSelection: (selection: ComposerEditorSelection) => void;
 }) {
@@ -32,8 +34,9 @@ export function useVoiceInputController(input: {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      if (input.cancelOnUnmount && input.ownerKey) session.cancel(input.ownerKey);
     };
-  }, []);
+  }, [input.cancelOnUnmount, input.ownerKey, session]);
 
   useFocusEffect(
     useCallback(() => {

@@ -132,7 +132,10 @@ function isId(value: unknown): value is JsonRpcId {
 function normalizeMcpAppToolResult(result: McpAppCallToolResult): McpAppCallToolResult {
   return {
     content: Array.isArray(result.content) ? result.content : [],
-    ...(Predicate.isObject(result.structuredContent)
+    // MCP Apps defines structuredContent as any JSON value. Codex search apps
+    // use arrays for result lists, so preserving only objects silently drops
+    // the data while the view remains in its loading state.
+    ...(result.structuredContent !== undefined && result.structuredContent !== null
       ? { structuredContent: result.structuredContent }
       : {}),
     ...(result.isError === true ? { isError: true } : {}),

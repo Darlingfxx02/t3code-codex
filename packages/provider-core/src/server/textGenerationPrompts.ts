@@ -373,6 +373,11 @@ Before answering, silently reduce the request to:
 
 Title the subject and outcome. Discard incidental instructions.
 
+Language:
+- Write the title in the same natural language as the user's message, using the language of the user's prose rather than the language of this instruction.
+- Never translate a title to English by default. If the user writes in Russian, the title must be in Russian; if the user writes in English, the title must be in English.
+- For mixed-language messages, use the dominant language of the user's prose and preserve product names, code identifiers, and model names as written.
+
 Editorial rules:
 - 3-8 words, fewer than 40 characters.
 - Use a compact noun phrase or clear action phrase.
@@ -399,6 +404,11 @@ Determine the title in this order:
 2. Use ASSISTANT messages to resolve vague links, unnamed code, and discovered product nouns. Do not promote one assistant finding into the thread subject unless the user adopts it as a new goal.
 3. Compare that subject with the previous title. Preserve accurate scope words, especially when earlier content is truncated. Replace the previous title when it is generic, artifact-based, a completion update, or contradicted by the thread.
 4. Title the durable subject and desired outcome, not the current workflow state.
+
+Language:
+- Write the title in the same natural language as the user's latest explicit goal, using the language of the user's prose rather than the language of this instruction.
+- Never translate a title to English by default. If the user's goal is in Russian, the title must be in Russian; if it is in English, the title must be in English.
+- For mixed-language messages, use the dominant language of the user's prose and preserve product names, code identifiers, and model names as written.
 
 Editorial rules:
 - 3-8 words, fewer than 40 characters.

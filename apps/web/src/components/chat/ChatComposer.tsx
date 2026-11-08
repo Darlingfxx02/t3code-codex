@@ -1,3 +1,4 @@
+import { ComposerPermissionsButton } from "./ComposerPermissionsButton";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
@@ -415,7 +416,6 @@ export interface ChatComposerProps {
   threadSyncPhase: ThreadSyncPhase | null;
 
   runtimeMode: RuntimeMode;
-  defaultRuntimeMode?: RuntimeMode;
   interactionMode: ProviderInteractionMode;
 
   lockedProvider: ProviderDriverKind | null;
@@ -442,8 +442,6 @@ export interface ChatComposerProps {
   pullRequestRepository: string | null;
   threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
   onComposerOverlayHeightChange: (height: number) => void;
-  /** The new-thread strip names the permissions, so the controls row hides its chip. */
-  permissionsShownInStrip: boolean;
 
   promptRef: React.RefObject<string>;
   composerImagesRef: React.RefObject<ComposerImageAttachment[]>;
@@ -2328,14 +2326,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       planModeEnabled={settings.planModeEnabled}
       planModeUiEnabled={planModeUiEnabled}
       interactionMode={interactionMode}
-      compatibleRuntimeMode={compatibleRuntimeMode}
-      defaultRuntimeMode={props.defaultRuntimeMode}
-      compatibleRuntimeModeOptions={compatibleRuntimeModeOptions}
       toggleInteractionMode={toggleInteractionMode}
-      handleRuntimeModeChange={handleRuntimeModeChange}
       composerControlsCollapsed={composerControlsCollapsed}
       effortDisplay={settings.effortDisplay}
-      permissionsShownInStrip={props.permissionsShownInStrip}
       composerControlsHidden={composerControlsHidden}
       restingHiddenBlockCount={restingHiddenBlockCount}
       iconOnlyBlockCount={iconOnlyBlockCount}
@@ -3134,6 +3127,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       focusComposer={focusComposer}
     />
   ) : null;
+  const permissionsButton = !showProviderUnavailable ? (
+    <ComposerPermissionsButton
+      runtimeMode={compatibleRuntimeMode}
+      runtimeModeOptions={compatibleRuntimeModeOptions}
+      onRuntimeModeChange={handleRuntimeModeChange}
+      size={composerControlsCollapsed ? "xs" : "sm"}
+      hidden={composerControlsHidden}
+    />
+  ) : null;
   return (
     <form
       ref={composerFormRef}
@@ -3183,7 +3185,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (isInsideRestingComposerControlScope(event.target)) return;
         composerMentionDragHandlers.onDrop(event);
       }}
-      className="mx-auto w-full min-w-0 max-w-(--chat-content-max-width)"
+      className="mx-auto w-full min-w-0 max-w-[calc(var(--chat-content-max-width)+2rem)]"
       data-chat-composer-form="true"
       {...threadContextDropTargetProps()}
     >
@@ -3265,7 +3267,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <button
                   type="button"
                   data-chat-composer-transition-actions="true"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-black hover:bg-white disabled:bg-white disabled:text-black"
                   disabled={collapsedComposerPrimaryActionDisabled}
                   aria-label={collapsedComposerPrimaryActionLabel}
                   onPointerDown={(event) => event.preventDefault()}
@@ -3480,7 +3482,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
               >
-                {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
+                <div className="me-2 flex shrink-0 items-center gap-0.5">
+                  {composerAttachButton}
+                  {permissionsButton}
+                </div>
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"
@@ -3561,20 +3566,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             {showInlineRestingControls ? (
               <div className="h-8">
                 <div
-                  ref={setInlineRestingControlsHost}
-                  className="absolute bottom-2 inset-x-4 min-w-0"
+                  data-chat-composer-resting-controls="true"
+                  aria-hidden={restingControlsVisible ? undefined : true}
+                  inert={restingControlsVisible ? undefined : true}
+                  className={cn(
+                    "absolute bottom-2 inset-x-4 flex min-w-0 items-center gap-1 text-muted-foreground/70 [&_button]:text-xs!",
+                    !restingControlsVisible && "invisible",
+                  )}
                 >
-                  <div
-                    ref={attachRestingComposerControls}
-                    data-chat-composer-resting-controls="true"
-                    aria-hidden={restingControlsVisible ? undefined : true}
-                    inert={restingControlsVisible ? undefined : true}
-                    className={cn(
-                      "relative flex w-max min-w-0 max-w-full items-center gap-1 text-muted-foreground/70 [&_button]:text-xs!",
-                      !restingControlsVisible && "invisible",
-                    )}
-                  >
-                    {composerControls}
+                  {permissionsButton}
+                  <div ref={setInlineRestingControlsHost} className="min-w-0 flex-1">
+                    <div
+                      ref={attachRestingComposerControls}
+                      className="relative flex w-max min-w-0 max-w-full items-center gap-1"
+                    >
+                      {composerControls}
+                    </div>
                   </div>
                 </div>
               </div>

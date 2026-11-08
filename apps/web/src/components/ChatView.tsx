@@ -63,6 +63,7 @@ import {
   type MessageId,
   type ModelSelection,
   type PreviewAnnotationPayload,
+  type RunId,
   ProviderInstanceId,
   type ServerProvider,
   type ScopedThreadRef,
@@ -177,7 +178,6 @@ import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { GuestPendingMessages } from "./chat/GuestShareControls";
 import { useDeviceState } from "~/state/device";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
-import { ComposerContextPermissions } from "./ComposerContextPermissions";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isEditableFocused } from "../lib/editableFocus";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -257,7 +257,7 @@ import {
   useThreadCheckpointSummaries,
 } from "../state/entities";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
-import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { ChatComposer, type ChatComposerHandle, type ChatComposerProps } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
 import {
@@ -498,6 +498,7 @@ export default function ChatView(props: ChatViewProps) {
   const promptRef = useRef("");
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
+  const expandedComposerRef = useRef<ChatComposerHandle | null>(null);
   const queuedRunEdit = useQueuedRunEdit({
     environmentId,
     routeThreadRef,
@@ -975,6 +976,13 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
     return labels;
+  })();
+  const activeTerminalPristineById = (() => {
+    const pristine = new Map<string, boolean | undefined>();
+    for (const session of activeThreadKnownSessions) {
+      pristine.set(session.target.terminalId, session.state.summary?.isPristine);
+    }
+    return pristine;
   })();
   const activeThreadRef = useActiveThreadRef(activeThread);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
@@ -1901,6 +1909,7 @@ export default function ChatView(props: ChatViewProps) {
     runningTerminalIds,
     activeServerOrderedTerminalIds,
     activeTerminalLabelsById,
+    terminalPristineById: activeTerminalPristineById,
     panelTerminalIds,
     canReuseTerminal,
     gitCwd,
@@ -2022,6 +2031,7 @@ export default function ChatView(props: ChatViewProps) {
   } = useRightPanelSurfaceClose({
     threadRef: activeThreadRef,
     terminalLabelsById: activeTerminalLabelsById,
+    terminalPristineById: activeTerminalPristineById,
   });
   const closeRightPanelSurfaceStable = closeRightPanelSurface;
   const persistThreadSettingsForNextTurn = async (input: {
@@ -2088,6 +2098,67 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
     return result;
+  };
+
+  const retryProviderError = async (runId: RunId) => {
+    if (
+      !activeThread ||
+      !serverProjection ||
+      !isServerThread ||
+      isSendBusy ||
+      isRevertingCheckpoint ||
+      threadDetailLoading ||
+      activeEnvironmentUnavailable
+    ) {
+      return;
+    }
+    const sourceRun = serverProjection.runs.find((run) => run.id === runId);
+    if (!sourceRun || sourceRun.status !== "failed") return;
+    const sourceMessage = serverProjection.messages.find(
+      (message) => message.id === sourceRun.userMessageId,
+    );
+    if (!sourceMessage || sourceMessage.role !== "user") return;
+    setThreadError(activeThread.id, null);
+    const settingsResult = await persistThreadSettingsForNextTurn({
+      threadId: activeThread.id,
+      createdAt: new Date().toISOString(),
+      runtimeMode,
+      interactionMode,
+    });
+    if (settingsResult._tag === "Failure") {
+      if (!isAtomCommandInterrupted(settingsResult)) {
+        const error = squashAtomCommandFailure(settingsResult);
+        setThreadError(
+          activeThread.id,
+          error instanceof Error ? error.message : "Could not retry the request.",
+        );
+      }
+      return;
+    }
+    const result = await startThreadTurn({
+      environmentId,
+      input: {
+        threadId: activeThread.id,
+        message: {
+          messageId: newMessageId(),
+          role: "user",
+          text: sourceMessage.text,
+          attachments: sourceMessage.attachments,
+          ...(sourceMessage.context === undefined ? {} : { context: sourceMessage.context }),
+        },
+        modelSelection: sourceRun.modelSelection,
+        runtimeMode,
+        interactionMode,
+        dispatchMode: "start",
+      },
+    });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      setThreadError(
+        activeThread.id,
+        error instanceof Error ? error.message : "Could not retry the request.",
+      );
+    }
   };
 
   const {
@@ -3080,6 +3151,151 @@ export default function ChatView(props: ChatViewProps) {
     openExpandedImagePreview(routeThreadKey, preview);
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
+  const sharedChatComposerProps: Omit<ChatComposerProps, "composerRef"> = {
+    canOperateThread,
+    reportedModelSelection,
+    multipleModelSelections,
+    supportsMultipleModels:
+      serverConfig?.environment.capabilities.requiredWorktreeBootstrap === true,
+    onMultipleModelSelectionsChange: setMultipleModelSelectionsStable,
+    composerDraftTarget,
+    environmentId,
+    attachmentUploadsCapabilityKnown,
+    supportsAttachmentUploads,
+    supportsQuestionAttachments,
+    maxFileAttachmentBytes,
+    routeKind,
+    routeThreadRef,
+    draftId,
+    activeThreadId,
+    activeThread,
+    activeThreadShell,
+    promptHistoryEntries: timelineEntries,
+    forceExpandedOnMobile: forceExpandedMobileComposer && isDraftHeroState,
+    projectSelectionRequired: isLocalDraftThread && activeProject === null,
+    phase,
+    isCompacting,
+    canInterrupt: canInterruptRunningThread,
+    isSendBusy:
+      (isSendBusy && !sendQueuesBehindSetup) ||
+      (setupQueueSendThreadKey !== null && setupQueueSendThreadKey === activeThreadKey) ||
+      queuedRunEdit.isSaving ||
+      isResuming,
+    canResume: resumableRunId !== null || hasHeldQueuedRuns,
+    isRevertingCheckpoint,
+    sendDisabledReason: !canOperateThread
+      ? "This connection cannot change threads."
+      : isEnvironmentChanging
+        ? "Preparing machine"
+        : isRevertingCheckpoint
+          ? "Rewinding conversation"
+          : feedbackUploading
+            ? "Sending feedback"
+            : threadDetailLoading
+              ? "Messages loading"
+              : worktreeSetupBlocksSend
+                ? "Preparing worktree"
+                : projectCloneSendBlockReason,
+    isPreparingWorktree: isPreparingWorktree && !sendQueuesBehindSetup,
+    bannerItems:
+      isDraftHeroState || composerBannerItems.length === 0
+        ? EMPTY_COMPOSER_BANNER_ITEMS
+        : composerBannerItems,
+    resumeCompactionTokens,
+    keepFullHistory,
+    onToggleKeepFullHistory: toggleKeepFullHistoryStable,
+    sideChatAvailable: sideChat.available,
+    sideChatDisabledReason,
+    onUsageLimitsCommand:
+      usageLimitsOffered && usageLimitsKey !== null && !composerHasNonPromptContent
+        ? openUsageLimits
+        : undefined,
+    environmentUnavailable: activeEnvironmentUnavailableState,
+    activePendingApproval,
+    pendingApprovals,
+    onHeldRequestIdsChange,
+    pendingUserInputs,
+    activePendingProgress,
+    activePendingResolvedAnswers,
+    activePendingIsResponding,
+    activePendingDraftAnswers,
+    activePendingQuestionIndex,
+    respondingRequestIds,
+    showPlanFollowUpPrompt,
+    activeProposedPlan,
+    threadSyncPhase: activeEnvironmentUnavailable ? null : threadSyncPhase,
+    runtimeMode,
+    interactionMode,
+    lockedProvider: modelPickerLockedProvider,
+    providerStatuses: providerStatuses as ServerProvider[],
+    providerCatalogKnown: serverConfig !== null,
+    activeProjectDefaultModelSelection,
+    activeThreadModelSelection: activeThread?.modelSelection,
+    activeProjectId: activeProject?.id ?? null,
+    contextWindowEntries: serverVisibleTurnItems,
+    contextWindowLiveUsage: activeThreadLiveTokenUsage,
+    contextWindowProviderThread: activeProviderThread,
+    compactThreadUnavailable,
+    compactDisabled,
+    compactDisabledReason,
+    resolvedTheme,
+    settings,
+    keybindings,
+    terminalOpen: Boolean(terminalUiState.terminalOpen),
+    gitCwd,
+    pullRequestProjectId: supportsPullRequests ? (activeProject?.id ?? null) : null,
+    pullRequestRepository: supportsPullRequests ? activeProjectRepository : null,
+    threadPullRequests: (activeThreadShell ?? activeThread)?.pullRequests,
+    onComposerOverlayHeightChange: publishComposerOverlayHeightStable,
+    promptRef,
+    composerImagesRef,
+    composerFilesRef,
+    composerTerminalContextsRef,
+    onPageScrollKeyDown: onComposerPageScrollKeyDownStable,
+    onPageScrollKeyUp: onComposerPageScrollKeyUpStable,
+    onPageScrollRelease: onComposerPageScrollReleaseStable,
+    onCompactContext: onComposerCompactContextStable,
+    onSend: onComposerSendStable,
+    onResume: onComposerResumeStable,
+    onInterrupt: onInterruptStable,
+    onImplementPlanInNewThread: onImplementPlanInNewThreadStable,
+    onSelectActivePendingUserInputOption: onSelectActivePendingUserInputOptionStable,
+    onAdvanceActivePendingUserInput: onAdvanceActivePendingUserInputStable,
+    onDismissActivePendingUserInput: onDismissUserInputStable,
+    onPreviousActivePendingUserInputQuestion: onPreviousActivePendingUserInputQuestionStable,
+    onChangeActivePendingUserInputCustomAnswer,
+    onProviderModelSelect: onProviderModelSelectStable,
+    onOpenProviderSetup: openProviderSetupStable,
+    getModelDisabledReason,
+    toggleInteractionMode: toggleInteractionModeStable,
+    handleRuntimeModeChange: handleRuntimeModeChangeStable,
+    handleInteractionModeChange: handleInteractionModeChangeStable,
+    focusComposer: focusComposerStable,
+    scheduleComposerFocus: scheduleComposerFocusStable,
+    setThreadError,
+    onExpandImage: onExpandTimelineImageStable,
+    onFileOpen: openFileAttachmentStable,
+    editingQueuedAttachments: queuedRunEdit.editingAttachments,
+    onRemoveEditingQueuedAttachment: queuedRunEdit.removeEditingAttachment,
+  };
+  const expandedComposerOverlayHeightChange = useStableCallback(() => {});
+  const expandedImageComposer = composerMounted ? (
+    <ComposerSurface.Shell>
+      <ComposerSurface.Host>
+        <ChatComposer
+          {...sharedChatComposerProps}
+          composerRef={expandedComposerRef}
+          onComposerOverlayHeightChange={expandedComposerOverlayHeightChange}
+        />
+      </ComposerSurface.Host>
+    </ComposerSurface.Shell>
+  ) : null;
+  const focusComposerAfterImageClose = useStableCallback(() => {
+    queueMicrotask(() => {
+      composerRef.current?.focusAtEnd();
+      document.querySelector<HTMLElement>('[data-testid="composer-editor"]')?.focus();
+    });
+  });
   const shownThreadSyncPhase = activeEnvironmentUnavailable ? null : delayedThreadSyncPhase;
   const hasThreadNow =
     attentionNow !== null || workNow !== null || goalNow !== null || shownThreadSyncPhase !== null;
@@ -3461,6 +3677,7 @@ export default function ChatView(props: ChatViewProps) {
                   onRevertToTurnCount={onRevertTimelineTurnStable}
                   onUseArtifactTemplate={insertArtifactTemplateStable}
                   onSendAppMessage={sendAppMessageStable}
+                  onRetryProviderError={retryProviderError}
                   isRevertingCheckpoint={isRevertingCheckpoint}
                   onImageExpand={onExpandTimelineImageStable}
                   onFileOpen={openFileAttachmentStable}
@@ -3510,10 +3727,13 @@ export default function ChatView(props: ChatViewProps) {
                   : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
               }
             >
-              <div ref={draftHeroTransitionGroupRef} className="chat-composer-lane w-full">
+              <div
+                ref={draftHeroTransitionGroupRef}
+                className="chat-composer-lane flex w-full justify-center"
+              >
                 <div
                   data-chat-composer-stack="true"
-                  className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
+                  className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full shrink-0 max-w-(--chat-content-max-width) sm:w-[calc(100%+2rem)] sm:max-w-[calc(var(--chat-content-max-width)+2rem)]"
                 >
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full">
@@ -3574,168 +3794,7 @@ export default function ChatView(props: ChatViewProps) {
                             />
                           ) : null}
                           {!composerMounted ? null : (
-                            <ChatComposer
-                              canOperateThread={canOperateThread}
-                              reportedModelSelection={reportedModelSelection}
-                              multipleModelSelections={multipleModelSelections}
-                              supportsMultipleModels={
-                                serverConfig?.environment.capabilities.requiredWorktreeBootstrap ===
-                                true
-                              }
-                              onMultipleModelSelectionsChange={setMultipleModelSelectionsStable}
-                              composerRef={composerRef}
-                              composerDraftTarget={composerDraftTarget}
-                              environmentId={environmentId}
-                              attachmentUploadsCapabilityKnown={attachmentUploadsCapabilityKnown}
-                              supportsAttachmentUploads={supportsAttachmentUploads}
-                              supportsQuestionAttachments={supportsQuestionAttachments}
-                              maxFileAttachmentBytes={maxFileAttachmentBytes}
-                              routeKind={routeKind}
-                              routeThreadRef={routeThreadRef}
-                              draftId={draftId}
-                              activeThreadId={activeThreadId}
-                              activeThread={activeThread}
-                              activeThreadShell={activeThreadShell}
-                              promptHistoryEntries={timelineEntries}
-                              forceExpandedOnMobile={
-                                forceExpandedMobileComposer && isDraftHeroState
-                              }
-                              projectSelectionRequired={
-                                isLocalDraftThread && activeProject === null
-                              }
-                              phase={phase}
-                              isCompacting={isCompacting}
-                              canInterrupt={canInterruptRunningThread}
-                              isSendBusy={
-                                (isSendBusy && !sendQueuesBehindSetup) ||
-                                (setupQueueSendThreadKey !== null &&
-                                  setupQueueSendThreadKey === activeThreadKey) ||
-                                queuedRunEdit.isSaving ||
-                                isResuming
-                              }
-                              canResume={resumableRunId !== null || hasHeldQueuedRuns}
-                              isRevertingCheckpoint={isRevertingCheckpoint}
-                              sendDisabledReason={
-                                !canOperateThread
-                                  ? "This connection cannot change threads."
-                                  : isEnvironmentChanging
-                                    ? "Preparing machine"
-                                    : isRevertingCheckpoint
-                                      ? "Rewinding conversation"
-                                      : feedbackUploading
-                                        ? "Sending feedback"
-                                        : threadDetailLoading
-                                          ? "Messages loading"
-                                          : worktreeSetupBlocksSend
-                                            ? "Preparing worktree"
-                                            : projectCloneSendBlockReason
-                              }
-                              isPreparingWorktree={isPreparingWorktree && !sendQueuesBehindSetup}
-                              bannerItems={
-                                isDraftHeroState || composerBannerItems.length === 0
-                                  ? EMPTY_COMPOSER_BANNER_ITEMS
-                                  : composerBannerItems
-                              }
-                              resumeCompactionTokens={resumeCompactionTokens}
-                              keepFullHistory={keepFullHistory}
-                              onToggleKeepFullHistory={toggleKeepFullHistoryStable}
-                              sideChatAvailable={sideChat.available}
-                              sideChatDisabledReason={sideChatDisabledReason}
-                              onUsageLimitsCommand={
-                                usageLimitsOffered &&
-                                usageLimitsKey !== null &&
-                                !composerHasNonPromptContent
-                                  ? openUsageLimits
-                                  : undefined
-                              }
-                              environmentUnavailable={activeEnvironmentUnavailableState}
-                              activePendingApproval={activePendingApproval}
-                              pendingApprovals={pendingApprovals}
-                              onHeldRequestIdsChange={onHeldRequestIdsChange}
-                              pendingUserInputs={pendingUserInputs}
-                              activePendingProgress={activePendingProgress}
-                              activePendingResolvedAnswers={activePendingResolvedAnswers}
-                              activePendingIsResponding={activePendingIsResponding}
-                              activePendingDraftAnswers={activePendingDraftAnswers}
-                              activePendingQuestionIndex={activePendingQuestionIndex}
-                              respondingRequestIds={respondingRequestIds}
-                              showPlanFollowUpPrompt={showPlanFollowUpPrompt}
-                              activeProposedPlan={activeProposedPlan}
-                              threadSyncPhase={
-                                activeEnvironmentUnavailable ? null : threadSyncPhase
-                              }
-                              runtimeMode={runtimeMode}
-                              defaultRuntimeMode={defaultRuntimeMode}
-                              interactionMode={interactionMode}
-                              lockedProvider={modelPickerLockedProvider}
-                              providerStatuses={providerStatuses as ServerProvider[]}
-                              providerCatalogKnown={serverConfig !== null}
-                              activeProjectDefaultModelSelection={
-                                activeProjectDefaultModelSelection
-                              }
-                              activeThreadModelSelection={activeThread?.modelSelection}
-                              activeProjectId={activeProject?.id ?? null}
-                              contextWindowEntries={serverVisibleTurnItems}
-                              contextWindowLiveUsage={activeThreadLiveTokenUsage}
-                              contextWindowProviderThread={activeProviderThread}
-                              compactThreadUnavailable={compactThreadUnavailable}
-                              compactDisabled={compactDisabled}
-                              compactDisabledReason={compactDisabledReason}
-                              resolvedTheme={resolvedTheme}
-                              settings={settings}
-                              keybindings={keybindings}
-                              terminalOpen={Boolean(terminalUiState.terminalOpen)}
-                              gitCwd={gitCwd}
-                              pullRequestProjectId={
-                                supportsPullRequests ? (activeProject?.id ?? null) : null
-                              }
-                              pullRequestRepository={
-                                supportsPullRequests ? activeProjectRepository : null
-                              }
-                              threadPullRequests={(activeThreadShell ?? activeThread)?.pullRequests}
-                              onComposerOverlayHeightChange={publishComposerOverlayHeightStable}
-                              permissionsShownInStrip={showComposerContextStrip && !isServerThread}
-                              promptRef={promptRef}
-                              composerImagesRef={composerImagesRef}
-                              composerFilesRef={composerFilesRef}
-                              composerTerminalContextsRef={composerTerminalContextsRef}
-                              onPageScrollKeyDown={onComposerPageScrollKeyDownStable}
-                              onPageScrollKeyUp={onComposerPageScrollKeyUpStable}
-                              onPageScrollRelease={onComposerPageScrollReleaseStable}
-                              onCompactContext={onComposerCompactContextStable}
-                              onSend={onComposerSendStable}
-                              onResume={onComposerResumeStable}
-                              onInterrupt={onInterruptStable}
-                              onImplementPlanInNewThread={onImplementPlanInNewThreadStable}
-                              onSelectActivePendingUserInputOption={
-                                onSelectActivePendingUserInputOptionStable
-                              }
-                              onAdvanceActivePendingUserInput={
-                                onAdvanceActivePendingUserInputStable
-                              }
-                              onDismissActivePendingUserInput={onDismissUserInputStable}
-                              onPreviousActivePendingUserInputQuestion={
-                                onPreviousActivePendingUserInputQuestionStable
-                              }
-                              onChangeActivePendingUserInputCustomAnswer={
-                                onChangeActivePendingUserInputCustomAnswer
-                              }
-                              onProviderModelSelect={onProviderModelSelectStable}
-                              onOpenProviderSetup={openProviderSetupStable}
-                              getModelDisabledReason={getModelDisabledReason}
-                              toggleInteractionMode={toggleInteractionModeStable}
-                              handleRuntimeModeChange={handleRuntimeModeChangeStable}
-                              handleInteractionModeChange={handleInteractionModeChangeStable}
-                              focusComposer={focusComposerStable}
-                              scheduleComposerFocus={scheduleComposerFocusStable}
-                              setThreadError={setThreadError}
-                              onExpandImage={onExpandTimelineImageStable}
-                              onFileOpen={openFileAttachmentStable}
-                              editingQueuedAttachments={queuedRunEdit.editingAttachments}
-                              onRemoveEditingQueuedAttachment={
-                                queuedRunEdit.removeEditingAttachment
-                              }
-                            />
+                            <ChatComposer {...sharedChatComposerProps} composerRef={composerRef} />
                           )}
                         </div>
                       </ComposerSurface.Host>
@@ -3785,20 +3844,6 @@ export default function ChatView(props: ChatViewProps) {
                                     : undefined
                                 }
                                 availableEnvironments={logicalProjectEnvironments}
-                                {...(isServerThread
-                                  ? {}
-                                  : {
-                                      trailing: (
-                                        <ComposerContextPermissions
-                                          environmentId={environmentId}
-                                          runtimeMode={runtimeMode}
-                                          supportedRuntimeModes={
-                                            activeProviderStatus?.supportedRuntimeModes
-                                          }
-                                          onRuntimeModeChange={handleRuntimeModeChangeStable}
-                                        />
-                                      ),
-                                    })}
                               />
                             </div>
                           )}
@@ -4005,7 +4050,11 @@ export default function ChatView(props: ChatViewProps) {
       <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
       {embedded ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
-      <ExpandedImageDialogHost threadKey={routeThreadKey} />
+      <ExpandedImageDialogHost
+        threadKey={routeThreadKey}
+        composer={expandedImageComposer}
+        onClose={focusComposerAfterImageClose}
+      />
     </div>
   );
   return (

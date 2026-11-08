@@ -128,11 +128,13 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
     knownTerminalSessions?.filter((session) => !panelTerminalIds.has(session.target.terminalId)) ??
     [];
   const terminalLabelsById = new Map<string, string>();
+  const terminalPristineById = new Map<string, boolean | undefined>();
   for (const session of drawerTerminalSessions) {
     terminalLabelsById.set(
       session.target.terminalId,
       resolveTerminalSessionLabel(session.target.terminalId, session.state.summary),
     );
+    terminalPristineById.set(session.target.terminalId, session.state.summary?.isPristine);
   }
   const terminalLaunchLocationsById = new Map<string, TerminalLaunchLocationWithEnv>();
   for (const session of drawerTerminalSessions) {
@@ -276,6 +278,7 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
           onHeightChange={setTerminalHeight}
           onAddTerminalContext={handleAddTerminalContext}
           terminalLabelsById={terminalLabelsById}
+          terminalPristineById={terminalPristineById}
           terminalLaunchLocationsById={terminalLaunchLocationsById}
         />
       </div>
@@ -347,12 +350,14 @@ export const PersistentThreadTerminalPanel = memo(function PersistentThreadTermi
     ? projectScriptRuntimeEnv({ project: { cwd: project.workspaceRoot }, worktreePath })
     : {};
   const terminalLabelsById = new Map<string, string>();
+  const terminalPristineById = new Map<string, boolean | undefined>();
   const terminalLaunchLocationsById = new Map<string, TerminalLaunchLocationWithEnv>();
   for (const terminalId of surface.terminalIds) {
     const summary =
       knownTerminalSessions?.find((session) => session.target.terminalId === terminalId)?.state
         .summary ?? null;
     terminalLabelsById.set(terminalId, resolveTerminalSessionLabel(terminalId, summary));
+    terminalPristineById.set(terminalId, summary?.isPristine);
     if (!project) continue;
     const terminalWorktreePath = resolveTerminalWorktreePath({
       launchContext,
@@ -409,6 +414,7 @@ export const PersistentThreadTerminalPanel = memo(function PersistentThreadTermi
       onHeightChange={() => undefined}
       onAddTerminalContext={onAddTerminalContext}
       terminalLabelsById={terminalLabelsById}
+      terminalPristineById={terminalPristineById}
       terminalLaunchLocationsById={terminalLaunchLocationsById}
       keybindings={keybindings}
     />

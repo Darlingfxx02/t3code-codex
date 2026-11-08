@@ -100,5 +100,6 @@ export function measureRestingComposerControls(
     blockWidths: widths.map((width) => width.natural),
     iconOnlyBlockWidths: widths.map((width) => width.iconOnly),
     overflowWidth: overflow ? elementOuterWidth(overflow) : 0,
+    overflowAlwaysVisible: overflow?.dataset.restingControlsOverflowPersistent === "true",
   };
 }

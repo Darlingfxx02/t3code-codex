@@ -39,6 +39,7 @@ import {
   workEntryIndicatesToolSuccess,
   workEntryIndicatesToolNeutralStatus,
   workLogEntryIsToolLike,
+  isProviderCapacityError,
   type TimelineEntry,
   type WorkLogEntry,
 } from "../../session-logic";
@@ -1800,7 +1801,9 @@ export function deriveMessagesTimelineRows(input: {
         isPendingApproval(timelineEntry.entry) ||
         (timelineEntry.entry.runId != null && itemizedRunIds.has(timelineEntry.entry.runId)) ||
         (timelineEntry.entry.itemType === "error" &&
-          timelineEntry.entry.toolLifecycleStatus === "failed") ||
+          (timelineEntry.entry.toolLifecycleStatus === "failed" ||
+            (timelineEntry.entry.structuredPayload?.type === "error" &&
+              isProviderCapacityError(timelineEntry.entry.structuredPayload)))) ||
         timelineEntry.entry.tone === "error" ||
         timelineEntry.entry.sourceActivityKind === "runtime.error" ||
         timelineEntry.entry.itemType === "system_notice" ||
@@ -1825,7 +1828,9 @@ export function deriveMessagesTimelineRows(input: {
           nextEntry.kind !== "work" ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
           (nextEntry.entry.itemType === "error" &&
-            nextEntry.entry.toolLifecycleStatus === "failed") ||
+            (nextEntry.entry.toolLifecycleStatus === "failed" ||
+              (nextEntry.entry.structuredPayload?.type === "error" &&
+                isProviderCapacityError(nextEntry.entry.structuredPayload)))) ||
           nextEntry.entry.tone === "error" ||
           nextEntry.entry.sourceActivityKind === "runtime.error" ||
           nextEntry.entry.itemType === "system_notice" ||

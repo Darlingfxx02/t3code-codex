@@ -8,5 +8,7 @@
   "ember-light",
   "ember-dark",
   "iris-light",
-  "iris-dark"
+  "iris-dark",
+  "silver-glass-light",
+  "silver-glass-dark"
 ]

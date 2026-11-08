@@ -435,7 +435,7 @@ function ProjectScriptEditorForm({
                             className={`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs dark:border-transparent ${
                               isSelected
                                 ? "border-primary/70 bg-primary/10 ring-inset dark:ring-1 dark:ring-primary/30"
-                                : "border-border/70 hover:bg-accent/60 dark:bg-white/[0.035]"
+                                : "border-border/70 hover:bg-interactive-row-hover dark:bg-white/[0.035] dark:hover:bg-interactive-row-hover"
                             }`}
                             onClick={() => {
                               setIcon(entry.id);

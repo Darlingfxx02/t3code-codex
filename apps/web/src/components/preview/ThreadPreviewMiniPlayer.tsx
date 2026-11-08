@@ -2,13 +2,7 @@ import { FILL_PREVIEW_VIEWPORT, type ScopedThreadRef } from "@t3tools/contracts"
 import { previewPdfAssetUrl } from "@t3tools/shared/preview";
 import { useEnvironmentHttpBaseUrl } from "~/state/environments";
 import { PanelRightIcon, PictureInPicture2, XIcon } from "lucide-react";
-import {
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useRef } from "react";
 import { create } from "zustand";
 import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -70,7 +64,6 @@ import {
 
 interface PointerGesture {
   readonly pointerId: number;
-  readonly pointerType: string;
   readonly pointerX: number;
   readonly pointerY: number;
   readonly frame: PreviewMiniPlayerFrame;
@@ -274,6 +267,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
       sourceSize={sourceSize}
       label="Floating browser preview"
       recording={recording}
+      openOnContentClick
       onOpenInPanel={openInPanel}
       pillActions={
         canPopOut ? (
@@ -419,6 +413,7 @@ function MiniPlayerShell({
   sourceSize,
   label,
   onOpenInPanel,
+  openOnContentClick = false,
   pillActions,
   recording = false,
   cornerRadius = frameCornerRadius,
@@ -429,6 +424,7 @@ function MiniPlayerShell({
   readonly sourceSize: PreviewMiniPlayerSize;
   readonly label: string;
   readonly onOpenInPanel: () => void;
+  readonly openOnContentClick?: boolean;
   readonly pillActions?: ReactNode;
   readonly recording?: boolean;
   readonly cornerRadius?: (frame: PreviewMiniPlayerSize) => number;
@@ -436,20 +432,8 @@ function MiniPlayerShell({
 }) {
   const canvas = useChatCanvas();
   const gestureRef = useRef<PointerGesture | null>(null);
-  // Touch toggles the pill after the tap's click so that click cannot land on the newly opened pill.
-  const [pillOpen, setPillOpen] = useState(false);
-  const handleTappedRef = useRef(false);
+  const suppressNextFrameClickRef = useRef(false);
   const handleRef = useRef<HTMLDivElement | null>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- document pointerdown listener closes the open pill on an outside press
-  useEffect(() => {
-    if (!pillOpen) return;
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && handleRef.current?.contains(event.target)) return;
-      setPillOpen(false);
-    };
-    document.addEventListener("pointerdown", dismiss, true);
-    return () => document.removeEventListener("pointerdown", dismiss, true);
-  }, [pillOpen]);
   const container = canvas?.container ?? null;
   const sourceKey = previewMiniPlayerSourceKey(miniPlayer.source);
   const frame = canvas?.previewKey === sourceKey ? canvas.layout.frame : null;
@@ -468,7 +452,6 @@ function MiniPlayerShell({
     if (event.button !== 0 || !frame) return;
     gestureRef.current = {
       pointerId: event.pointerId,
-      pointerType: event.pointerType,
       pointerX: event.clientX,
       pointerY: event.clientY,
       frame,
@@ -513,11 +496,7 @@ function MiniPlayerShell({
     const gesture = gestureRef.current;
     if (gesture?.pointerId !== event.pointerId) return;
     gestureRef.current = null;
-    handleTappedRef.current =
-      event.type === "pointerup" &&
-      gesture.direction === null &&
-      gesture.pointerType === "touch" &&
-      !gesture.moved;
+    suppressNextFrameClickRef.current = gesture.moved;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -529,7 +508,37 @@ function MiniPlayerShell({
         <section
           aria-label={label}
           data-preview-mini-player={sourceKey}
-          className="pointer-events-none absolute select-none"
+          className="pointer-events-none absolute select-none outline-none"
+          role={openOnContentClick ? "button" : undefined}
+          tabIndex={openOnContentClick ? 0 : undefined}
+          onClick={
+            openOnContentClick
+              ? (event) => {
+                  if (suppressNextFrameClickRef.current) {
+                    suppressNextFrameClickRef.current = false;
+                    return;
+                  }
+                  if (
+                    event.target instanceof Element &&
+                    (event.target.closest("[data-preview-mini-controls]") ||
+                      event.target.closest("[data-preview-mini-player-resize]"))
+                  ) {
+                    return;
+                  }
+                  onOpenInPanel();
+                }
+              : undefined
+          }
+          onKeyDown={
+            openOnContentClick
+              ? (event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  onOpenInPanel();
+                }
+              : undefined
+          }
           style={{
             left: frame.x,
             top: frame.y,
@@ -538,39 +547,35 @@ function MiniPlayerShell({
             borderRadius: radius,
           }}
         >
+          {openOnContentClick ? (
+            <div
+              data-preview-open-panel
+              className="pointer-events-auto absolute inset-0 z-[49] cursor-pointer"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenInPanel();
+              }}
+            />
+          ) : null}
           <div
             ref={handleRef}
-            data-pill-open={pillOpen ? "" : undefined}
             className="group pointer-events-auto absolute z-[49] size-3 touch-none cursor-grab active:cursor-grabbing pointer-coarse:-m-2.5 pointer-coarse:size-8"
             style={{ right: pillInset, top: pillInset }}
             onPointerDown={(event) => beginGesture(event, null)}
             onPointerMove={handlePointerMove}
             onPointerUp={endGesture}
             onPointerCancel={endGesture}
-            onClick={() => {
-              if (!handleTappedRef.current) return;
-              handleTappedRef.current = false;
-              setPillOpen((open) => !open);
-            }}
           >
             <div
-              role={recording ? "status" : undefined}
-              aria-label={recording ? "Recording preview" : undefined}
-              aria-hidden={!recording}
-              className="absolute right-0 top-0 size-2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 group-data-pill-open:opacity-0 pointer-coarse:right-2.5 pointer-coarse:top-2.5"
+              data-preview-mini-controls
+              className="pointer-events-auto absolute right-0 top-0 flex h-8 cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 shadow-lg/20 backdrop-blur-xl active:cursor-grabbing pointer-coarse:right-2.5 pointer-coarse:top-2.5"
             >
-              <span
-                className={cn(
-                  "block size-2 rounded-full shadow-sm ring-1 ring-background/70",
-                  recording
-                    ? "bg-destructive motion-safe:animate-status-pulse"
-                    : "bg-foreground/25",
-                )}
-              />
-            </div>
-            <div className="pointer-events-none absolute right-0 top-0 flex h-8 cursor-grab items-center gap-0.5 rounded-lg border border-border/80 bg-popover/92 p-0.5 opacity-0 shadow-lg/20 backdrop-blur-xl transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-data-pill-open:pointer-events-auto group-data-pill-open:opacity-100 active:cursor-grabbing pointer-coarse:right-2.5 pointer-coarse:top-2.5">
               {recording ? (
-                <span aria-hidden className="flex size-6 shrink-0 items-center justify-center">
+                <span
+                  role="status"
+                  aria-label="Recording preview"
+                  className="flex size-6 shrink-0 items-center justify-center"
+                >
                   <span className="size-2 rounded-full bg-destructive motion-safe:animate-status-pulse" />
                 </span>
               ) : null}

@@ -295,6 +295,7 @@ interface TerminalSessionState {
   updatedAt: string;
   eventSequence: number;
   inputCount: number;
+  hasPersistedHistory: boolean;
   cols: number;
   rows: number;
   process: PtyAdapter.PtyProcess | null;
@@ -413,6 +414,11 @@ function summary(session: TerminalSessionState): TerminalSummary {
     exitCode: session.exitCode,
     exitSignal: session.exitSignal,
     hasRunningSubprocess: session.hasRunningSubprocess,
+    isPristine:
+      (session.status === "starting" || session.status === "running") &&
+      session.inputCount === 0 &&
+      !session.hasPersistedHistory &&
+      !session.hasRunningSubprocess,
     label: terminalWireLabel(session),
     updatedAt: session.updatedAt,
   };
@@ -2862,6 +2868,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         updatedAt: yield* nowIso,
         eventSequence: 0,
         inputCount: 0,
+        hasPersistedHistory: inherited.value().length > 0,
         cols,
         rows,
         process: null,
@@ -3323,7 +3330,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         terminalId,
       });
     }
-    session.inputCount += 1;
+    const wasPristine =
+      session.inputCount === 0 &&
+      !session.hasPersistedHistory &&
+      !session.hasRunningSubprocess;
     yield* Effect.try({
       try: () => process.write(input.data),
       catch: (cause) =>
@@ -3334,6 +3344,20 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           cause,
         }),
     });
+    session.inputCount += 1;
+    // Publish the first successful input immediately so a close racing the subprocess poll
+    // cannot mistake a used terminal for an untouched prompt. Later keystrokes need no event.
+    if (wasPristine) {
+      const eventStamp = advanceEventSequence(session);
+      yield* publishEvent({
+        type: "activity",
+        threadId: session.threadId,
+        terminalId: session.terminalId,
+        sequence: eventStamp.sequence,
+        hasRunningSubprocess: session.hasRunningSubprocess,
+        label: terminalWireLabel(session),
+      });
+    }
   });
 
   const resizeLocked = Effect.fn("terminal.resize")(function* (

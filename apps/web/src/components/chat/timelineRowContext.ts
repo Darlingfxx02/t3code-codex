@@ -94,6 +94,9 @@ export interface TimelineRowSharedState {
   onCancelWorktreeSetup: (() => void) | null;
   retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
   onRetryWorkspacePreparation: ((runId: RunId) => void) | null;
+  onRetryProviderError: ((runId: RunId) => void) | null;
+  autoRetryCapacityErrors: boolean;
+  onSetAutoRetryCapacityErrors: ((enabled: boolean) => void) | null;
   onWorktreeSetupWorkLocally: (() => void) | null;
   onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
   workGroupViewState: WorkGroupViewState;

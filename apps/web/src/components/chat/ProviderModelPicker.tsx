@@ -5,7 +5,19 @@ import {
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
-import { createContext, memo, type ReactNode, useRef, useState } from "react";
+import {
+  createContext,
+  memo,
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { ClaudeAI, OpenAI } from "../Icons";
+import { Button } from "../ui/button";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -17,7 +29,8 @@ import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./p
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
-import { shortcutLabelForCommand } from "../../keybindings";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "../../keybindings";
+import { registerModelPickerContent } from "../../modelPickerVisibility";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
@@ -71,7 +84,21 @@ function lockBackgroundScroll(popup: HTMLElement | null) {
 }
 
 /** What a docked effort column needs from its picker: the model it serves. */
-export const DockedPickerContext = createContext<{ modelLabel: string }>({ modelLabel: "" });
+export const DockedPickerContext = createContext<{
+  modelLabel: string;
+  onChooseModel?: () => void;
+}>({ modelLabel: "" });
+
+const COMPOSER_SUBSCRIPTIONS = [
+  { driver: "codex", label: "ChatGPT / Codex", Icon: OpenAI },
+  { driver: "claudeAgent", label: "Claude", Icon: ClaudeAI },
+] as const;
+
+function CompactPickerRegistration() {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the overview while the model list is unmounted
+  useLayoutEffect(() => registerModelPickerContent(), []);
+  return null;
+}
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   environmentId: EnvironmentId | null;
@@ -121,9 +148,21 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const popupRef = useRef<HTMLDivElement | null>(null);
   const size = props.size ?? "sm";
   const docked = props.effortColumn !== undefined;
+  const compactPicker = docked && props.isComposerOwned === true;
+  const [choosingModel, setChoosingModel] = useState(false);
+  const [providerTab, setBrowsedProvider] = useState<string | null>(null);
+  const compactStageRef = useRef<HTMLDivElement | null>(null);
+  const compactStageAnimationRef = useRef<Animation | null>(null);
+  const compactPopupAnimationRef = useRef<Animation | null>(null);
+  const compactPreviousPopupRectRef = useRef<DOMRectReadOnly | null>(null);
+  const previousCompactStageRef = useRef<string | null>(null);
 
   const activeEntry =
     props.instanceEntries.find((entry) => entry.instanceId === props.activeInstanceId) ?? null;
+  const supportedActiveProvider = COMPOSER_SUBSCRIPTIONS.find(
+    (subscription) => subscription.driver === activeEntry?.driverKind,
+  );
+  const browsedProvider = providerTab ?? supportedActiveProvider?.driver ?? "codex";
 
   const activeInstanceId = props.activeInstanceId;
   const selectedInstanceOptions = props.modelOptionsByInstance.get(activeInstanceId) ?? [];
@@ -148,10 +187,27 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
 
   const setIsMenuOpen = (open: boolean) => {
+    if (open && !isMenuOpen && compactPicker) {
+      const supported = COMPOSER_SUBSCRIPTIONS.some(
+        (subscription) => subscription.driver === activeEntry?.driverKind,
+      );
+      setChoosingModel(!supported);
+      setBrowsedProvider(supported ? activeEntry!.driverKind : "codex");
+    }
     props.onOpenChange?.(open);
     if (props.open === undefined) {
       setUncontrolledIsMenuOpen(open);
     }
+  };
+
+  const setCompactChoosingModel = (next: boolean) => {
+    if (next !== choosingModel) {
+      const rect = popupRef.current?.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) {
+        compactPreviousPopupRectRef.current = rect;
+      }
+    }
+    setChoosingModel(next);
   };
 
   /**
@@ -167,22 +223,133 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     // No aria-checked here: an On switch is checked but is not where focus belongs.
     const row =
       level ??
+      column?.querySelector<HTMLElement>('input[type="range"]:not(:disabled)') ??
       (rows === "any"
-        ? column?.querySelector<HTMLElement>("[data-effort-row]:not(:disabled)")
+        ? column?.querySelector<HTMLElement>(
+            "[data-effort-row]:not(:disabled), [data-choose-model]",
+          )
         : null);
     row?.focus({ preventScroll: true });
     row?.scrollIntoView({ block: "nearest" });
     return row != null;
   };
-  const openTarget = (target: "effort" | "permissions") => {
-    if (target === "effort") {
-      focusEffort("any");
+  const focusModel = () => {
+    const row = popupRef.current?.querySelector<HTMLElement>(
+      "[data-choose-model]:not([data-disabled])",
+    );
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: "nearest" });
+    return row != null;
+  };
+  const focusEffortAfterCompactTransition = useEffectEvent(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => focusEffort("any"));
+    });
+  });
+  const handleCompactEscape = useEffectEvent(() => {
+    setCompactChoosingModel(false);
+    setBrowsedProvider(activeEntry?.driverKind ?? "codex");
+    focusEffortAfterCompactTransition();
+  });
+  const openEffort = () => {
+    if (compactPicker && choosingModel) {
+      setCompactChoosingModel(false);
+      setBrowsedProvider(activeEntry?.driverKind ?? "codex");
+      focusEffortAfterCompactTransition();
       return;
     }
-    popupRef.current
-      ?.querySelector<HTMLButtonElement>("[data-composer-permissions-trigger]")
-      ?.click();
+    focusEffort("any");
   };
+
+  // Keep the popup mounted while its compact content changes so Floating UI can animate the
+  // shared geometry instead of measuring a new popup for every picker state.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- animates committed compact popup DOM geometry before paint
+  useLayoutEffect(() => {
+    if (!compactPicker) {
+      previousCompactStageRef.current = null;
+      compactStageAnimationRef.current?.cancel();
+      compactStageAnimationRef.current = null;
+      compactPopupAnimationRef.current?.cancel();
+      compactPopupAnimationRef.current = null;
+      compactPreviousPopupRectRef.current = null;
+      return;
+    }
+
+    const stage = compactStageRef.current;
+    const nextStage = choosingModel ? "models" : "reasoning";
+    const previousStage = previousCompactStageRef.current;
+    previousCompactStageRef.current = nextStage;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const popup = popupRef.current;
+    const previousRect = compactPreviousPopupRectRef.current;
+    compactPreviousPopupRectRef.current = null;
+
+    if (stage && previousStage !== null && previousStage !== nextStage && !reduceMotion) {
+      if (typeof stage.animate === "function") {
+        compactStageAnimationRef.current?.cancel();
+        const animation = stage.animate([{ opacity: 0 }, { opacity: 1 }], {
+          duration: 180,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        });
+        compactStageAnimationRef.current = animation;
+        void animation.finished
+          .catch(() => undefined)
+          .then(() => {
+            if (compactStageAnimationRef.current === animation) {
+              compactStageAnimationRef.current = null;
+            }
+          });
+      }
+    }
+
+    if (!popup || !previousRect || reduceMotion || typeof popup.animate !== "function") {
+      compactPopupAnimationRef.current?.cancel();
+      compactPopupAnimationRef.current = null;
+      return;
+    }
+    const nextRect = popup.getBoundingClientRect();
+    if (nextRect.width <= 0 || nextRect.height <= 0) return;
+
+    // The popup's background owns the transition. Its content is already in its final layout,
+    // so FLIP the outer rectangle from the previous state and let the new content fade in.
+    compactPopupAnimationRef.current?.cancel();
+    const popupAnimation = popup.animate(
+      [
+        {
+          width: `${previousRect.width}px`,
+          height: `${previousRect.height}px`,
+          transform: `translate3d(${previousRect.left - nextRect.left}px, ${previousRect.top - nextRect.top}px, 0)`,
+        },
+        {
+          width: `${nextRect.width}px`,
+          height: `${nextRect.height}px`,
+          transform: "translate3d(0, 0, 0)",
+        },
+      ],
+      { duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+    compactPopupAnimationRef.current = popupAnimation;
+    void popupAnimation.finished
+      .catch(() => undefined)
+      .then(() => {
+        if (compactPopupAnimationRef.current === popupAnimation) {
+          compactPopupAnimationRef.current = null;
+        }
+      });
+  }, [choosingModel, compactPicker]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the window Escape listener in sync with the open popup state
+  useEffect(() => {
+    if (!isMenuOpen || !compactPicker || !choosingModel) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleCompactEscape();
+    };
+    window.addEventListener("keydown", handleEscape, true);
+    return () => window.removeEventListener("keydown", handleEscape, true);
+  }, [choosingModel, compactPicker, isMenuOpen]);
 
   const handleInstanceModelChange = (instanceId: ProviderInstanceId, model: string) => {
     if (props.disabled) return;
@@ -191,8 +358,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       setIsMenuOpen(false);
       return;
     }
+    if (compactPicker) setCompactChoosingModel(false);
     // The column renders the new model's levels on commit.
-    window.requestAnimationFrame(() => focusEffort("levels"));
+    if (compactPicker) {
+      focusEffortAfterCompactTransition();
+    } else {
+      window.requestAnimationFrame(() => focusEffort("levels"));
+    }
   };
 
   const shortcutLabel = props.keybindings
@@ -262,11 +434,24 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         : {})}
       lockedProvider={props.lockedProvider}
       lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
-      instanceEntries={props.instanceEntries}
+      instanceEntries={
+        compactPicker
+          ? props.instanceEntries.filter((entry) => entry.driverKind === browsedProvider)
+          : props.instanceEntries
+      }
+      simplified={compactPicker}
       {...(props.keybindings ? { keybindings: props.keybindings } : {})}
       modelOptionsByInstance={props.modelOptionsByInstance}
       terminalOpen={props.terminalOpen ?? false}
-      onRequestClose={() => setIsMenuOpen(false)}
+      onRequestClose={() => {
+        if (compactPicker && choosingModel) {
+          setCompactChoosingModel(false);
+          setBrowsedProvider(activeEntry?.driverKind ?? "codex");
+          focusEffortAfterCompactTransition();
+        } else {
+          setIsMenuOpen(false);
+        }
+      }}
       {...(props.onOpenProviderSetup ? { onOpenProviderSetup: props.onOpenProviderSetup } : {})}
       getModelDisabledReason={(instanceId, model) =>
         props.disabled
@@ -274,7 +459,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           : (props.getModelDisabledReason?.(instanceId, model) ?? null)
       }
       onInstanceModelChange={handleInstanceModelChange}
-      {...(docked
+      {...(docked && !compactPicker
         ? {
             docked,
             onFocusEffort: () => void focusEffort("any"),
@@ -299,7 +484,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       }}
       onOpenChangeComplete={(open) => {
         const target = takeOpenTarget(triggerRef.current);
-        if (open && docked && target) openTarget(target);
+        if (open && docked && target === "effort") openEffort();
+        else if (open && compactPicker && choosingModel) window.requestAnimationFrame(focusModel);
       }}
     >
       <PopoverTrigger
@@ -318,12 +504,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             onClick={(event) => {
               if (!isMenuOpen || !docked) return;
               const target = takeOpenTarget(triggerRef.current);
-              if (!target) return;
+              if (target !== "effort") return;
               // A shortcut aimed at the open picker moves within it instead of closing it.
               (
                 event as typeof event & { preventBaseUIHandler?: () => void }
               ).preventBaseUIHandler?.();
-              openTarget(target);
+              openEffort();
             }}
             className={cn(
               "min-w-0 shrink justify-between whitespace-nowrap",
@@ -413,18 +599,144 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             unlock?.();
           };
         }}
-        initialFocus={searchInputRef}
+        initialFocus={compactPicker ? undefined : searchInputRef}
         align={props.popupAlign ?? "start"}
         // Docked, the popup opens above the composer and slides over it when that space is short,
         // so a short window gets its full height (Floating UI sizes to the viewport) instead of a sliver.
         {...(docked
-          ? { side: "top" as const, collisionAvoidance: { side: "shift", align: "shift" } as const }
+          ? {
+              side: "top" as const,
+              collisionAvoidance: {
+                side: compactPicker ? ("flip" as const) : ("shift" as const),
+                align: "shift" as const,
+              },
+            }
           : {})}
         className="before:hidden"
         padding="none"
         touchBackdrop
       >
-        {props.effortColumn ? (
+        {compactPicker ? (
+          <div
+            className="flex w-80 max-w-[calc(100vw-2rem)] flex-col"
+            data-compact-model-picker
+            onKeyDownCapture={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === "Escape" && choosingModel) {
+                event.preventDefault();
+                event.stopPropagation();
+                setCompactChoosingModel(false);
+                setBrowsedProvider(activeEntry?.driverKind ?? "codex");
+                focusEffortAfterCompactTransition();
+                return;
+              }
+              const command = resolveShortcutCommand(event.nativeEvent, props.keybindings ?? [], {
+                platform: navigator.platform,
+                context: {
+                  modelPickerOpen: true,
+                  terminalFocus: false,
+                  terminalOpen: props.terminalOpen ?? false,
+                },
+              });
+              if (
+                command !== "modelPicker.previousProvider" &&
+                command !== "modelPicker.nextProvider"
+              )
+                return;
+              const subscriptions = COMPOSER_SUBSCRIPTIONS.filter(
+                ({ driver }) =>
+                  (props.lockedProvider === null || props.lockedProvider === driver) &&
+                  props.instanceEntries.some(
+                    (entry) => entry.driverKind === driver && entry.enabled,
+                  ),
+              );
+              if (subscriptions.length === 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const index = subscriptions.findIndex(({ driver }) => driver === browsedProvider);
+              const direction = command === "modelPicker.nextProvider" ? 1 : -1;
+              const next =
+                subscriptions[(index + direction + subscriptions.length) % subscriptions.length]!;
+              setBrowsedProvider(next.driver);
+              setCompactChoosingModel(true);
+              window.requestAnimationFrame(() => focusModel());
+            }}
+          >
+            <CompactPickerRegistration />
+            <div ref={compactStageRef} className="will-change-[opacity]">
+              {choosingModel ? (
+                <>
+                  <div className="px-3 pt-3 pb-1">
+                    <Button
+                      variant="ghost-muted"
+                      size="compact"
+                      aria-label="Back to reasoning"
+                      onClick={() => {
+                        setCompactChoosingModel(false);
+                        setBrowsedProvider(activeEntry?.driverKind ?? "codex");
+                        focusEffortAfterCompactTransition();
+                      }}
+                    >
+                      Back
+                    </Button>
+                  </div>
+                  <div className="px-3 pt-3 pb-1">
+                    <ToggleGroup
+                      aria-label="Subscriptions"
+                      variant="segmented"
+                      size="default"
+                      className="w-full"
+                      value={[browsedProvider]}
+                      onValueChange={(values) => {
+                        const next = values[0];
+                        if (!next) return;
+                        setBrowsedProvider(next);
+                        setCompactChoosingModel(true);
+                        window.requestAnimationFrame(() => focusModel());
+                      }}
+                    >
+                      {COMPOSER_SUBSCRIPTIONS.map(({ driver, label, Icon }) => {
+                        const entries = props.instanceEntries.filter(
+                          (entry) => entry.driverKind === driver,
+                        );
+                        const locked =
+                          props.lockedProvider !== null && props.lockedProvider !== driver;
+                        return (
+                          <Toggle
+                            key={driver}
+                            value={driver}
+                            className="flex-1"
+                            aria-label={label}
+                            title={locked ? "Start a new thread to switch subscriptions" : label}
+                            disabled={locked || !entries.some((entry) => entry.enabled)}
+                          >
+                            <Icon className="size-5" aria-hidden />
+                          </Toggle>
+                        );
+                      })}
+                    </ToggleGroup>
+                  </div>
+                  {picker}
+                  {props.selectedModels === undefined ? (
+                    <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />
+                  ) : null}
+                </>
+              ) : (
+                <DockedPickerContext
+                  value={{
+                    modelLabel: selectedModel ? getDisplayModelName(selectedModel) : triggerTitle,
+                    onChooseModel: () => {
+                      setCompactChoosingModel(true);
+                      window.requestAnimationFrame(() => focusModel());
+                    },
+                  }}
+                >
+                  <div data-model-picker-effort>{props.effortColumn}</div>
+                </DockedPickerContext>
+              )}
+            </div>
+          </div>
+        ) : props.effortColumn ? (
           <DockedPickerContext value={{ modelLabel: triggerTitle }}>
             <div className="flex max-h-(--available-height) flex-col">
               {/* One fixed height, so a model with more options never resizes the popup. Short

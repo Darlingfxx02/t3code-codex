@@ -40,6 +40,14 @@ describe("context strip labels and resting composer controls", () => {
     expect(
       resolveRestingComposerControlsLayout({ ...measurement, hostWidth: hostWidth(compact) }),
     ).toEqual(layout);
+
+    const persistentOverflow = { ...measurement, overflowAlwaysVisible: true };
+    expect(resolveRestingComposerControlsNaturalWidth(persistentOverflow)).toBe(
+      naturalWidth + measurement.overflowWidth + measurement.gap,
+    );
+    expect(
+      resolveRestingComposerControlsLayout({ ...persistentOverflow, hostWidth: naturalWidth }),
+    ).toEqual({ hiddenCount: 1, visible: true });
   });
 });
 

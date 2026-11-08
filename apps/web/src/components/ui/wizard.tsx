@@ -11,11 +11,19 @@ export function WizardPopup({
   size = "default",
   ...props
 }: Omit<ComponentProps<typeof DialogPopup>, "className" | "style"> & {
-  readonly size?: "default" | "wide";
+  readonly size?: "default" | "wide" | "full";
 }) {
   return (
-    <DialogPopup {...props} className={size === "wide" ? "max-w-3xl" : "max-w-xl"}>
-      <ScrollArea className="*:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4">
+    <DialogPopup
+      {...props}
+      className={
+        size === "full" ? "max-w-[calc(100vw-2rem)]" : size === "wide" ? "max-w-3xl" : "max-w-xl"
+      }
+    >
+      <ScrollArea
+        radius={props.bottomStickOnMobile === false ? "dialog-inner" : "dialog-sheet-inner"}
+        className="*:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4"
+      >
         <div className="flex min-h-0 flex-col">{children}</div>
       </ScrollArea>
     </DialogPopup>

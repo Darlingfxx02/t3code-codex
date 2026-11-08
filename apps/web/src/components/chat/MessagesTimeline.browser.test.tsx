@@ -217,6 +217,31 @@ const TASK_ID = ScheduledTaskId.make("task-1");
 const AUTOMATION_PROMPT = "Triage the inbox\n\nLabel every new issue and close duplicates.";
 
 describe("MessagesTimeline work rows", () => {
+  it("renders a restart notification as a centered T3 divider", async () => {
+    await using screen = await renderTimeline([
+      work("restart-notification", {
+        label: "Restarted",
+        tone: "info",
+        itemType: "notification",
+        structuredPayload: v2Item("notification", {
+          id: "restart-notification",
+          source: { kind: "system" },
+          outcome: "completed",
+          summary: "Restarted",
+        }).item,
+        projectedItem: v2Item("notification", {
+          id: "restart-notification",
+          source: { kind: "system" },
+          outcome: "completed",
+          summary: "Restarted",
+        }),
+      }),
+    ]);
+    const label = screen.getByText("Restarted", { exact: true }).element();
+    await expect.element(label).toBeVisible();
+    expect(label.parentElement?.querySelector("svg")).not.toBeNull();
+  });
+
   it("keeps the worked-for heading in place when expanded at the bottom", async () => {
     const props = baseProps();
     const runId = RunId.make("completed-run");
@@ -607,6 +632,50 @@ function usageLimitEntries(resetAt: string) {
   });
 }
 
+function capacityEntries() {
+  const threadId = ThreadId.make("capacity-thread");
+  const runId = RunId.make("capacity-run");
+  const at = DateTime.makeUnsafe(CREATED_AT);
+  return {
+    runId,
+    entries: deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: [
+        {
+          position: 0,
+          visibility: "local",
+          sourceThreadId: threadId,
+          sourceItemId: TurnItemId.make("capacity-error"),
+          item: {
+            id: TurnItemId.make("capacity-error"),
+            threadId,
+            runId,
+            nodeId: null,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 0,
+            title: "Provider error",
+            startedAt: at,
+            completedAt: at,
+            updatedAt: at,
+            type: "error",
+            status: "failed",
+            failure: {
+              class: "provider_error",
+              message: "Selected model is at capacity.",
+              code: "serverOverloaded",
+              retryable: true,
+            },
+            retry: { attempt: 5, maxAttempts: 5, retryDelayMs: 0 },
+          },
+        },
+      ],
+      optimisticMessages: [],
+    }),
+  };
+}
+
 describe("MessagesTimeline usage limit notice", () => {
   it("labels the retry time with the viewer's timezone", async () => {
     await using screen = await renderTimeline(usageLimitEntries("2026-03-17T19:30:00.000Z"));
@@ -634,6 +703,40 @@ describe("MessagesTimeline usage limit notice", () => {
     } finally {
       await session.send("Emulation.setTimezoneOverride", { timezoneId: "" });
     }
+  });
+});
+
+describe("MessagesTimeline model capacity notice", () => {
+  it("renders a chat event with manual and automatic retry actions", async () => {
+    const capacity = capacityEntries();
+    let retriedRunId: RunId | null = null;
+    let autoRetry = false;
+    await using screen = await renderTimeline(capacity.entries, {
+      onRetryProviderError: (runId) => {
+        retriedRunId = runId;
+      },
+      onSetAutoRetryCapacityErrors: (enabled) => {
+        autoRetry = enabled;
+      },
+    });
+
+    expect(screen.text()).toContain("Model at capacity");
+    expect(screen.text()).toContain("Try a different model or retry this request.");
+    await screen.getByRole("button", { name: "Retry" }).click();
+    expect(retriedRunId).toBe(capacity.runId);
+    await screen.getByRole("button", { name: "Retry automatically" }).click();
+    expect(autoRetry).toBe(true);
+  });
+
+  it("automatically retries the latest capacity event when enabled", async () => {
+    const capacity = capacityEntries();
+    const onRetryProviderError = vi.fn();
+    await using _screen = await renderTimeline(capacity.entries, {
+      autoRetryCapacityErrors: true,
+      onRetryProviderError,
+    });
+
+    expect(onRetryProviderError).toHaveBeenCalledWith(capacity.runId);
   });
 });
 

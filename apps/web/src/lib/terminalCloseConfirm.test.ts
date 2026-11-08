@@ -41,4 +41,16 @@ describe("terminal close confirmation", () => {
     await expect(confirmation).resolves.toBe(false);
     expect(isTerminalCloseConfirmPending()).toBe(false);
   });
+
+  it("skips confirmation for a terminal the server identifies as pristine", async () => {
+    await expect(confirmTerminalClose(["Terminal 1"], { isPristine: true })).resolves.toBe(true);
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(isTerminalCloseConfirmPending()).toBe(false);
+  });
+
+  it("confirms when pristine state is unknown", async () => {
+    confirmMock.mockResolvedValue(false);
+    await expect(confirmTerminalClose(["Terminal 1"], {})).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+  });
 });

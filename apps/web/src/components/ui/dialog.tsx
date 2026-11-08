@@ -155,9 +155,9 @@ function DialogFooter({
   return (
     <div
       className={cn(
-        "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
-        variant === "default" && "border-t bg-muted/72 py-4",
-        variant === "bare" && "py-4",
+        "sticky bottom-0 z-1 flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-(--dialog-inner-radius)",
+        variant === "default" && "border-t bg-muted py-4",
+        variant === "bare" && "bg-popover py-4",
         className,
       )}
       data-slot="dialog-footer"
@@ -192,7 +192,7 @@ function DialogPanel({
   ...props
 }: React.ComponentProps<"div"> & { scrollFade?: boolean }) {
   return (
-    <ScrollArea scrollFade={scrollFade}>
+    <ScrollArea radius="dialog-sheet-inner" scrollFade={scrollFade}>
       <div
         className={cn(
           "space-y-4 p-6 in-[[data-slot=dialog-popup]:has([data-slot=dialog-header])]:pt-1 in-[[data-slot=dialog-popup]:has([data-slot=dialog-footer]:not(.border-t))]:pb-1",

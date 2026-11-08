@@ -1598,7 +1598,7 @@ function ImportCandidateList({
       ))}
       {other.length > 0 ? (
         <Collapsible>
-          <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted/40">
+          <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-interactive-row-hover">
             <Checkbox
               checked={otherSelected === other.length}
               indeterminate={otherSelected > 0 && otherSelected < other.length}
@@ -1661,7 +1661,7 @@ function ImportRepositoryGroup({
   }
   return (
     <Collapsible defaultOpen>
-      <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted/40">
+      <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-interactive-row-hover">
         <Checkbox
           checked={selectedCount === keys.length}
           indeterminate={selectedCount > 0 && selectedCount < keys.length}
@@ -1727,7 +1727,7 @@ function ImportCandidateRow({
   return (
     <label
       className={cn(
-        "flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted/40 has-disabled:cursor-default",
+        "flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-interactive-row-hover has-disabled:cursor-default",
         nested && "pl-8",
       )}
     >

@@ -79,4 +79,34 @@ describe("ExpandedImageDialog", () => {
     await userEvent.keyboard("{Escape}");
     await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   });
+
+  it("keeps the mounted composer in the dialog when it submits", async () => {
+    const onSend = vi.fn();
+    await using screen = await render(
+      <ExpandedImageDialog
+        preview={{ images: [{ src: PIXEL, name: "shot.png" }], index: 0 }}
+        onClose={vi.fn()}
+        composer={
+          <form
+            aria-label="Chat composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSend();
+            }}
+          >
+            <textarea aria-label="Composer prompt" defaultValue="Make it brighter" />
+            <button type="submit">Send</button>
+          </form>
+        }
+      />,
+      { router: false },
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledOnce();
+    await expect
+      .element(screen.getByRole("region", { name: "shot.png, zoomable image" }))
+      .toBeVisible();
+    await expect.element(screen.getByRole("form", { name: "Chat composer" })).toBeVisible();
+  });
 });

@@ -426,7 +426,19 @@ export function createNewThreadHandler(router: AnyRouter) {
 export function resolveDefaultProjectRef(
   projects: ReadonlyArray<EnvironmentProject>,
   projectOrder: readonly string[],
+  lastProjectKey: string | null = null,
 ): ScopedProjectRef | null {
+  const lastProject =
+    lastProjectKey === null
+      ? null
+      : projects.find(
+          (project) =>
+            project.archivedAt == null &&
+            scopedProjectKey(scopeProjectRef(project.environmentId, project.id)) === lastProjectKey,
+        );
+  if (lastProject) {
+    return scopeProjectRef(lastProject.environmentId, lastProject.id);
+  }
   const [defaultProject] = orderItemsByPreferredIds({
     items: projects.filter((project) => project.archivedAt == null),
     preferredIds: projectOrder,
@@ -441,6 +453,7 @@ export function resolveDefaultProjectRef(
 
 export function useHandleNewThread() {
   const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const lastProjectKey = useUiStateStore((store) => store.lastProjectKey);
   const routeTarget = useThreadRouteTarget();
   const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
   const routeDraftId = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
@@ -455,7 +468,7 @@ export function useHandleNewThread() {
   );
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
-  const defaultProjectRef = resolveDefaultProjectRef(projects, projectOrder);
+  const defaultProjectRef = resolveDefaultProjectRef(projects, projectOrder, lastProjectKey);
 
   return {
     activeDraftThread,

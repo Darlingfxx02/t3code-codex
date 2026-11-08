@@ -655,7 +655,7 @@ function PlatformIcon(props: {
             type="button"
             aria-label={`${props.row.title}: ${props.label} ${available ? "available" : "not available"}`}
             className={cn(
-              "relative grid size-6 shrink-0 place-items-center rounded-md outline-hidden hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              "relative grid size-6 shrink-0 place-items-center rounded-md outline-hidden hover:bg-interactive-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               available ? "text-foreground" : "text-muted-foreground/45",
             )}
           />
@@ -754,7 +754,7 @@ function DeviceSourceRow(props: { row: SourceRow }) {
         <div className="flex min-w-0 items-center gap-1.5">
           <p className="truncate text-sm font-medium">{row.title}</p>
           {row.kind ? (
-            <span className="shrink-0 rounded border border-border px-1 text-3xs uppercase tracking-wide text-muted-foreground">
+            <span className="shrink-0 rounded border border-border px-1 text-3xs tracking-wide text-muted-foreground">
               {row.kind}
             </span>
           ) : null}

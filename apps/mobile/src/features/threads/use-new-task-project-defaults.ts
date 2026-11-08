@@ -14,9 +14,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { environmentSession } from "../../state/session";
 
 /**
- * A project's new-task defaults: server settings merged with its t3.json. The
- * new-task flow and the home pending-drafts list both read the default
- * workspace mode here, so a draft that never picked one shows what it sends.
+ * A project's new-task defaults: server settings merged with its t3.json.
  * Every read is a shared per-environment or per-project atom.
  */
 export function useNewTaskProjectDefaults(project: EnvironmentProject | null) {

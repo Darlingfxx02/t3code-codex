@@ -47,6 +47,7 @@ export interface RestingComposerControlsMeasurement {
   minimumFixedWidth: number;
   blockWidths: readonly number[];
   overflowWidth: number;
+  overflowAlwaysVisible?: boolean;
   iconOnlyBlockWidths?: readonly number[];
 }
 
@@ -58,6 +59,7 @@ function restingComposerControlsWidth(
 ): number {
   const { blockWidths, gap } = input;
   const visibleCount = blockWidths.length - hiddenCount;
+  const showOverflow = input.overflowAlwaysVisible || hiddenCount > 0;
   return (
     fixedWidth +
     blockWidths
@@ -70,8 +72,8 @@ function restingComposerControlsWidth(
             : width),
         0,
       ) +
-    (hiddenCount > 0 ? input.overflowWidth : 0) +
-    gap * (visibleCount + (hiddenCount > 0 ? 1 : 0))
+    (showOverflow ? input.overflowWidth : 0) +
+    gap * (visibleCount + (showOverflow ? 1 : 0))
   );
 }
 

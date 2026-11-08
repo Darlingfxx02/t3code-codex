@@ -1985,13 +1985,6 @@ export const questionAttachmentDraftsAtom = Atom.family((prefix: string) =>
   }).pipe(Atom.withEquality(sameDrafts)),
 );
 
-export const newTaskComposerDraftsAtom = Atom.make((get): ComposerDraftsByKey => {
-  const matching = Object.entries(get(composerDraftsAtom)).filter(([key]) =>
-    isNewTaskDraftKey(key),
-  );
-  return matching.length === 0 ? EMPTY_DRAFTS : Object.fromEntries(matching);
-}).pipe(Atom.withEquality(sameDrafts));
-
 type ComposerDraftUploadSource = Pick<ComposerDraft, "attachments" | "project">;
 type ComposerDraftUploadSources = Readonly<Record<string, ComposerDraftUploadSource>>;
 export const composerDraftUploadSourcesAtom = Atom.make((get): ComposerDraftUploadSources =>

@@ -143,7 +143,7 @@ function UpdateEverythingDialogContent({
             : null}
         </AlertDialogDescription>
       </AlertDialogHeader>
-      <ScrollArea scrollFade>
+      <ScrollArea radius="dialog-sheet-inner" scrollFade>
         <div className="flex flex-col gap-3 px-6 pb-4">
           {notes.map((note) => (
             <p key={note} className="text-muted-foreground text-sm">

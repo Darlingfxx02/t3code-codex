@@ -17,8 +17,6 @@ import {
 } from "~/rightPanelStore";
 import { Button } from "~/components/ui/button";
 import { DiscoveryList } from "~/components/ui/discovery-list";
-import { Dialog } from "~/components/ui/dialog";
-import { WizardPopup } from "~/components/ui/wizard";
 import { Spinner } from "~/components/ui/spinner";
 import { cn } from "~/lib/utils";
 import { focusPanelTerminalAfterClose } from "~/lib/terminalFocus";
@@ -189,16 +187,14 @@ export function DevicePanel(props: {
 
   if (loaded && (!state.onboardingCompleted || hostDisabled)) {
     return (
-      <Dialog
-        open={props.visible}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) props.onDismissSetup();
-        }}
-      >
-        <WizardPopup>
-          <DeviceSetup environmentId={environmentId} state={state} />
-        </WizardPopup>
-      </Dialog>
+      <PreviewPanelShell mode={props.mode}>
+        <DeviceSetup
+          environmentId={environmentId}
+          state={state}
+          onDismiss={props.onDismissSetup}
+          presentation="panel"
+        />
+      </PreviewPanelShell>
     );
   }
 
