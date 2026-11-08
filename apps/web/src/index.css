@@ -129,7 +129,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-opacity: 80%;
   --glass-saturation: 1.14;
   --desktop-window-right-resize-inset: 0px;
-  --workspace-topbar-height: 52px;
+  --workspace-topbar-height: 44px;
   --workspace-rail-width: 3.75rem;
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
@@ -163,7 +163,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 .wco {
   --native-titlebar-height: env(titlebar-area-height, 0px);
-  --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
+  --workspace-topbar-height: max(40px, env(titlebar-area-height, 44px));
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
   --workspace-controls-right: calc(
