@@ -398,47 +398,46 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
-      <div
-        className="relative h-dvh min-h-0 overflow-hidden bg-background p-0.5"
-        data-workspace-shell=""
-      >
-        <SidebarProvider
-          className="relative h-full! min-h-0! overflow-hidden rounded-[1rem] border border-sidebar-border/70 md:ps-(--workspace-rail-width)"
-          data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-          defaultOpen
-          style={sidebarProviderStyle}
+      <div className="relative h-dvh min-h-0 overflow-hidden bg-background" data-workspace-stage="">
+        <WorkspaceIconRail />
+        <div
+          className="relative z-10 ms-1 me-1 my-1 h-[calc(100%-0.5rem)] overflow-hidden rounded-[1rem] border border-sidebar-border/70 md:ms-[calc(var(--workspace-rail-width)+0.25rem)]"
+          data-workspace-shell=""
         >
-          <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
-          <WorkspaceIconRail />
-          <Sidebar
-            side="left"
-            collapsible="offcanvas"
-            data-app-sidebar=""
-            {...sidebarArea}
-            role="navigation"
-            aria-label="Threads"
-            resizable={{
-              maxWidth: sidebarMaximumWidth,
-              minWidth: sidebarMinimumWidth,
-              shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-                nextWidth <= currentWidth ||
-                wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-              storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-              onResize: setSidebarWidth,
-            }}
-            style={{
-              ...windowControlsInsetStyle,
-              "--sidebar-left-offset": "var(--workspace-rail-width)",
-            }}
+          <SidebarProvider
+            className="relative h-full! min-h-0! overflow-hidden"
+            data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
+            defaultOpen
+            style={sidebarProviderStyle}
           >
-            <ThreadSidebar routeReveal={sidebarRouteReveal} />
-            <SidebarRail onDoubleClick={resetSidebarWidth} />
-          </Sidebar>
-          {children}
-          <BackgroundThreadAnnouncer />
-          <SidebarControl />
-          {isElectron ? <HistorySwipeNavigation /> : null}
-        </SidebarProvider>
+            <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
+            <Sidebar
+              side="left"
+              collapsible="offcanvas"
+              data-app-sidebar=""
+              {...sidebarArea}
+              role="navigation"
+              aria-label="Threads"
+              resizable={{
+                maxWidth: sidebarMaximumWidth,
+                minWidth: sidebarMinimumWidth,
+                shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+                  nextWidth <= currentWidth ||
+                  wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+                storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+                onResize: setSidebarWidth,
+              }}
+              style={windowControlsInsetStyle}
+            >
+              <ThreadSidebar routeReveal={sidebarRouteReveal} />
+              <SidebarRail onDoubleClick={resetSidebarWidth} />
+            </Sidebar>
+            {children}
+            <BackgroundThreadAnnouncer />
+            <SidebarControl />
+            {isElectron ? <HistorySwipeNavigation /> : null}
+          </SidebarProvider>
+        </div>
       </div>
     </PanelAnimationSuppressionProvider>
   );

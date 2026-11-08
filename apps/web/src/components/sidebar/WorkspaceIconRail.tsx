@@ -48,7 +48,7 @@ export function WorkspaceIconRail() {
   return (
     <aside
       aria-label="Workspace navigation"
-      className="absolute inset-y-0 start-0 z-30 hidden w-(--workspace-rail-width) p-0.5 md:flex"
+      className="absolute inset-y-0 start-0 z-0 hidden w-(--workspace-rail-width) p-0.5 md:flex"
       data-app-icon-rail=""
     >
       <nav className="flex h-full w-full flex-col items-center rounded-md border border-sidebar-border/70 bg-sidebar surface-grain px-1.5 py-2 text-sidebar-foreground">
