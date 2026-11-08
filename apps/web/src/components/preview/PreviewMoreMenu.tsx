@@ -56,7 +56,14 @@ const MenuTriggerButton = () => (
     <TooltipTrigger
       render={
         <MenuTrigger
-          render={<Button variant="ghost" size="icon-xs" type="button" aria-label="Preview menu" />}
+          render={
+            <Button
+              variant="browser-chrome"
+              size="icon-sm"
+              type="button"
+              aria-label="Preview menu"
+            />
+          }
         />
       }
     >

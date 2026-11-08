@@ -1031,7 +1031,7 @@ function RightPanelTab(
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-1.5 rounded-md pr-2 pl-1.5 text-xs",
+        "cursor-pointer group/tab flex h-8 max-w-60 shrink-0 items-center gap-2 rounded-lg pr-2.5 pl-2 text-sm",
         props.ownsDesktopTitleBar && "[-webkit-app-region:no-drag]",
         props.active
           ? "bg-interactive-row-active text-foreground hover:bg-interactive-row-active"

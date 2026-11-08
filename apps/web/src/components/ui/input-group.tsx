@@ -23,6 +23,7 @@ const inputGroupVariants = cva(
           "dropdown-glass rounded-(--floating-radius) has-[input:focus-visible,textarea:focus-visible]:border-[color-mix(in_srgb,var(--contrast-foreground)_46%,transparent)] has-[input:focus-visible,textarea:focus-visible]:ring-[3px] has-[input:focus-visible,textarea:focus-visible]:ring-inset",
         ghost:
           "border-transparent bg-transparent shadow-none hover:bg-interactive-row-hover has-[input:disabled,textarea:disabled,input:focus-visible,textarea:focus-visible,input[aria-invalid],textarea[aria-invalid]]:shadow-none has-[input:focus-visible,textarea:focus-visible]:bg-background has-[input:focus-visible,textarea:focus-visible]:ring-[3px] has-[input:focus-visible,textarea:focus-visible]:ring-inset",
+        "browser-chrome": "rounded-full border-transparent bg-muted/70 shadow-none",
       },
     },
   },

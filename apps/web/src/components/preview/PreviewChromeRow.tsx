@@ -91,10 +91,14 @@ export function PreviewChromeRow({
     <div className="relative">
       <form
         onSubmit={submit}
-        className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
+        className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-0 in-data-[preview-panel-mode=inline]:h-12 in-data-[preview-panel-mode=inline]:min-h-12 in-data-[preview-panel-mode=inline]:gap-2.5"
         data-surface-subheader
       >
-        <div className="flex items-center gap-0.5" role="group" aria-label="Navigation">
+        <div
+          className="flex h-9 items-center gap-0.5 rounded-full bg-muted/70 px-1"
+          role="group"
+          aria-label="Navigation"
+        >
           <Tooltip>
             <TooltipTrigger
               render={
@@ -150,7 +154,10 @@ export function PreviewChromeRow({
 
         {leadingActions}
 
-        <InputGroup variant="ghost" className="group/address h-7 flex-1">
+        <InputGroup
+          variant="browser-chrome"
+          className="group/address h-7 flex-1 in-data-[preview-panel-mode=inline]:h-9"
+        >
           <Tooltip>
             <TooltipTrigger
               render={
