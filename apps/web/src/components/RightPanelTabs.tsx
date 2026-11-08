@@ -1346,7 +1346,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         ownsDesktopTitleBar && "drag-region",
         ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
         props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-        externalTabbar && "pointer-events-auto border-l border-border/70",
+        externalTabbar && "pointer-events-auto border-l border-border/60",
       )}
       style={externalTabbar ? { width: `${props.inlineSize?.width ?? 0}px` } : undefined}
       data-right-panel-tabbar
