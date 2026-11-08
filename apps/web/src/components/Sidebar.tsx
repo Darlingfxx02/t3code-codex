@@ -251,7 +251,7 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "./ui/combobox";
-import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
+import { SidebarContent, SidebarGroup, SidebarTrigger, useSidebar } from "./ui/sidebar";
 import {
   SidebarChromeFooter,
   SidebarChromeHeader,
@@ -3507,7 +3507,26 @@ export default function Sidebar({
   return (
     <>
       <ThreadContextDragGhost />
-      <SidebarChromeHeader isElectron={isElectron} />
+      <SidebarChromeHeader
+        isElectron={isElectron}
+        actions={
+          <div className="flex items-center gap-0.5">
+            <SidebarTrigger aria-label="Toggle main sidebar" className="size-7 rounded-lg" />
+            <SidebarThreadHeader
+              showProjectScope={projectSidebarEnabled}
+              showProjectActions={false}
+              onSearch={() => openCommandPalette()}
+              searchShortcutLabel={shortcutLabelForCommand(keybindings, "commandPalette.toggle")}
+              projectScope={null}
+              onNewProject={openAddProjectCommandPalette}
+              onNewThread={handleNewThreadClick}
+              newThreadDisabled={projects.length === 0}
+              newThreadShortcutLabel={newThreadShortcutLabel}
+              showProjectPickerHint={!legacySidebarEnabled && projectGroups.length > 0}
+            />
+          </div>
+        }
+      />
       <SidebarContent
         ref={sidebarContentRef}
         className="min-h-full"
