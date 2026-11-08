@@ -64,6 +64,7 @@ import {
   ListFilterIcon,
   PlusIcon,
   SettingsIcon,
+  SquarePenIcon,
 } from "lucide-react";
 import {
   useEffect,
@@ -251,7 +252,8 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "./ui/combobox";
-import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
+import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
+import { T3Wordmark } from "./T3Wordmark";
 import { SidebarChromeFooter } from "./sidebar/SidebarChrome";
 import {
   SidebarHeaderIconButton,
@@ -3507,26 +3509,40 @@ export default function Sidebar({
       <SidebarContent
         ref={sidebarContentRef}
         className="min-h-full"
+        scrollFade={false}
         fixedHeader={
-          <SidebarGroup className="z-[1]">
-            <SidebarThreadHeader
-              showProjectScope={projectSidebarEnabled}
-              projectScope={projectScopeControl}
-              showActions={false}
-              onSearch={() => openCommandPalette()}
-              searchShortcutLabel={shortcutLabelForCommand(
-                keybindings,
-                "commandPalette.toggle",
-              )}
-              onNewProject={openAddProjectCommandPalette}
-              onNewThread={handleNewThreadClick}
-              newThreadDisabled={projects.length === 0}
-              newThreadShortcutLabel={newThreadShortcutLabel}
-              showProjectPickerHint={
-                !legacySidebarEnabled && projectGroups.length > 0
+          <div className="border-b border-sidebar-border/70 px-2 py-2">
+            <div className="flex h-8 items-center gap-2 px-2 text-sm font-medium text-sidebar-foreground">
+              <T3Wordmark aria-label="T3" className="h-4 w-auto shrink-0" />
+              <span>Code</span>
+            </div>
+            <SidebarMenuButton
+              aria-label="New thread"
+              disabled={projects.length === 0}
+              onClick={handleNewThreadClick}
+              size="lg"
+              tooltip={
+                newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"
               }
-            />
-          </SidebarGroup>
+            >
+              <SquarePenIcon />
+              <span>New thread</span>
+            </SidebarMenuButton>
+            <div className="pt-1">
+              <SidebarThreadHeader
+                showProjectScope={projectSidebarEnabled}
+                projectScope={projectScopeControl}
+                showActions={false}
+                onSearch={() => openCommandPalette()}
+                searchShortcutLabel={shortcutLabelForCommand(keybindings, "commandPalette.toggle")}
+                onNewProject={openAddProjectCommandPalette}
+                onNewThread={handleNewThreadClick}
+                newThreadDisabled={projects.length === 0}
+                newThreadShortcutLabel={newThreadShortcutLabel}
+                showProjectPickerHint={!legacySidebarEnabled && projectGroups.length > 0}
+              />
+            </div>
+          </div>
         }
       >
         <SidebarGroup className="flex-1" role="presentation">

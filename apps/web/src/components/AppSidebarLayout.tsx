@@ -40,7 +40,6 @@ import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { WorkspaceIconRail } from "./sidebar/WorkspaceIconRail";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
-import { T3Wordmark } from "./T3Wordmark";
 import { Button } from "./ui/button";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { useQuietThreadShell } from "../state/entities";
@@ -72,9 +71,7 @@ function WorkspaceGlobalChrome() {
       data-workspace-global-chrome=""
     >
       <div className="flex min-w-0 basis-(--sidebar-width) shrink-0 items-center gap-2">
-        <T3Wordmark aria-label="T3" className="h-4 w-auto" />
-        <span className="text-sm font-medium text-muted-foreground">Code</span>
-        <SidebarTrigger aria-label="Toggle main sidebar" className="ml-1 size-7" />
+        <SidebarTrigger aria-label="Toggle main sidebar" className="size-7" />
         <Button
           variant="ghost-muted"
           size="icon-sm"
@@ -84,7 +81,11 @@ function WorkspaceGlobalChrome() {
           <SearchIcon aria-hidden className="size-4" />
         </Button>
       </div>
-      <div className="min-w-0 flex-1 truncate px-3 text-sm text-foreground/90">{title}</div>
+      <div className="min-w-0 flex-1 truncate ps-3 pe-32 text-sm text-foreground/90">{title}</div>
+      <div
+        className="pointer-events-none fixed inset-e-0 top-0 z-40 flex h-(--workspace-topbar-height) justify-end"
+        data-workspace-right-tabs=""
+      />
     </header>
   );
 }
