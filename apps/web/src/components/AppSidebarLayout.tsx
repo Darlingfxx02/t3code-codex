@@ -67,15 +67,14 @@ function WorkspaceGlobalChrome() {
 
   return (
     <header
-      className="fixed inset-x-0 top-0 z-30 flex h-(--workspace-topbar-height) items-center gap-2 px-3"
+      className="fixed top-0 right-0 z-30 flex h-(--workspace-topbar-height) items-center gap-2 px-5"
+      style={{ left: "var(--workspace-rail-width)" }}
       data-workspace-global-chrome=""
     >
-      <div className="flex w-(--workspace-rail-width) shrink-0 items-center justify-center">
+      <div className="flex min-w-0 basis-(--sidebar-width) shrink-0 items-center gap-2">
         <T3Wordmark aria-label="T3" className="h-4 w-auto" />
-      </div>
-      <div className="flex min-w-0 shrink-0 items-center gap-1">
         <span className="text-sm font-medium text-muted-foreground">Code</span>
-        <SidebarTrigger aria-label="Toggle main sidebar" className="size-7" />
+        <SidebarTrigger aria-label="Toggle main sidebar" className="ml-1 size-7" />
         <Button
           variant="ghost-muted"
           size="icon-sm"

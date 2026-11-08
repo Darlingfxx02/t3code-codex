@@ -3505,7 +3505,7 @@ export default function ChatView(props: ChatViewProps) {
           state={deviceState}
         />
       )}
-      {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
+      {!embedded ? panelLayoutControls : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
