@@ -84,8 +84,12 @@ function WorkspaceGlobalChrome() {
       <div className="min-w-0 flex-1 truncate ps-3 pe-32 text-sm text-foreground/90">{title}</div>
       <span
         aria-hidden
-        className="pointer-events-none fixed top-0 z-40 h-(--workspace-topbar-height) w-px bg-border/60"
-        style={{ left: "calc(var(--workspace-rail-width) + 0.25rem + 1px + var(--sidebar-width))" }}
+        className="pointer-events-none fixed z-40 w-px bg-border/60"
+        style={{
+          left: "calc(var(--workspace-rail-width) + 0.25rem + 1px + var(--sidebar-width))",
+          top: "0.375rem",
+          height: "calc(var(--workspace-topbar-height) - 0.75rem)",
+        }}
       />
       <div
         className="pointer-events-none fixed top-0 z-40 flex h-(--workspace-topbar-height) justify-end"

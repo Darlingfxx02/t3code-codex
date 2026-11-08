@@ -1341,16 +1341,22 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const tabBar = (
     <div
       className={cn(
-        "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
+        "relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
         props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
         ownsDesktopTitleBar && "drag-region",
         ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
         props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-        externalTabbar && "pointer-events-auto border-l border-border/60",
+        externalTabbar && "pointer-events-auto",
       )}
       style={externalTabbar ? { width: `${props.inlineSize?.width ?? 0}px` } : undefined}
       data-right-panel-tabbar
     >
+      {externalTabbar ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-1.5 start-0 w-px bg-border/60"
+        />
+      ) : null}
       <ScrollArea
         radius="none"
         ref={attachTabList}
