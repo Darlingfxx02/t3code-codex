@@ -8,9 +8,10 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
+import { SearchIcon } from "lucide-react";
 
 import { moveWorkspaceFocus, workspaceAreaProps } from "../lib/workspaceFocus";
-import { isCommandPaletteOpen } from "../commandPaletteBus";
+import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { isElectron } from "../env";
 import {
   releaseThreadUndoShortcut,
@@ -39,6 +40,10 @@ import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { WorkspaceIconRail } from "./sidebar/WorkspaceIconRail";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
+import { T3Wordmark } from "./T3Wordmark";
+import { Button } from "./ui/button";
+import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+import { useQuietThreadShell } from "../state/entities";
 import {
   clampThreadSidebarWidth,
   resolveInitialThreadSidebarWidth,
@@ -47,12 +52,43 @@ import {
   THREAD_MAIN_CONTENT_MIN_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
-import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
+import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { registerCommands, registerMenuAction } from "../shortcuts/dispatcher";
 import { resolveThreadRouteRef } from "../threadRoutes";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
+
+function WorkspaceGlobalChrome() {
+  const target = useThreadRouteTarget();
+  const threadRef = target?.kind === "server" ? target.threadRef : null;
+  const thread = useQuietThreadShell(threadRef);
+  const title = thread?.title.trim() || (target?.kind === "draft" ? "New thread" : "T3 Code");
+
+  return (
+    <header
+      className="fixed inset-x-0 top-0 z-30 flex h-(--workspace-topbar-height) items-center gap-2 px-3"
+      data-workspace-global-chrome=""
+    >
+      <div className="flex w-(--workspace-rail-width) shrink-0 items-center justify-center">
+        <T3Wordmark aria-label="T3" className="h-4 w-auto" />
+      </div>
+      <div className="flex min-w-0 shrink-0 items-center gap-1">
+        <span className="text-sm font-medium text-muted-foreground">Code</span>
+        <SidebarTrigger aria-label="Toggle main sidebar" className="size-7" />
+        <Button
+          variant="ghost-muted"
+          size="icon-sm"
+          aria-label="Global search"
+          onClick={() => openCommandPalette()}
+        >
+          <SearchIcon aria-hidden className="size-4" />
+        </Button>
+      </div>
+      <div className="min-w-0 flex-1 truncate px-3 text-sm text-foreground/90">{title}</div>
+    </header>
+  );
+}
 
 function subscribeToViewportWidth(onChange: () => void): () => void {
   window.addEventListener("resize", onChange);
@@ -401,7 +437,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <div className="relative h-dvh min-h-0 overflow-hidden bg-background" data-workspace-stage="">
         <WorkspaceIconRail />
         <div
-          className="relative z-10 ms-1 me-1 my-1 h-[calc(100%-0.5rem)] overflow-hidden rounded-[1rem] border border-sidebar-border/70 md:ms-[calc(var(--workspace-rail-width)+0.25rem)]"
+          className="relative z-10 ms-1 me-1 overflow-hidden rounded-2xl border border-sidebar-border/70 md:ms-[calc(var(--workspace-rail-width)+0.25rem)]"
+          style={{
+            marginTop: "calc(var(--workspace-topbar-height) + 0.25rem)",
+            height: "calc(100% - var(--workspace-topbar-height) - 0.5rem)",
+          }}
           data-workspace-shell=""
         >
           <SidebarProvider
@@ -436,6 +476,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             <BackgroundThreadAnnouncer />
             <SidebarControl />
             {isElectron ? <HistorySwipeNavigation /> : null}
+            <WorkspaceGlobalChrome />
           </SidebarProvider>
         </div>
       </div>
