@@ -225,6 +225,8 @@ function SidebarProvider({
           {
             "--sidebar-width": SIDEBAR_WIDTH,
             "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+            "--sidebar-left-offset": "0px",
+            "--sidebar-right-offset": "0px",
             "--workspace-titlebar-content-left":
               "calc(var(--workspace-controls-left) + var(--workspace-titlebar-control-size) + var(--workspace-titlebar-control-gap))",
             ...style,
@@ -268,6 +270,7 @@ function Sidebar({
   resizable = false,
   className,
   children,
+  style: styleProp,
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right";
@@ -329,6 +332,7 @@ function Sidebar({
                 SIDEBAR_TITLEBAR_CONTROL_SIZE,
                 side === "left" ? "pl-safe" : "pr-safe",
               )}
+              style={styleProp}
               {...props}
             >
               {children}
@@ -368,14 +372,28 @@ function Sidebar({
             "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) md:flex",
             "[[data-panel-animations=true]_&]:transition-[left,right,width] [[data-panel-animations=true]_&]:[transition-duration:var(--panel-animation-duration)] [[data-panel-animations=true]_&]:ease-out",
             side === "left"
-              ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-              : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
+              ? "group-data-[collapsible=offcanvas]:left-0"
+              : "group-data-[collapsible=offcanvas]:right-0",
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
               : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
           data-slot="sidebar-container"
+          style={{
+            ...styleProp,
+            ...(side === "left"
+              ? {
+                  left: offcanvasCollapsed
+                    ? "calc(var(--sidebar-left-offset) - var(--sidebar-width))"
+                    : "var(--sidebar-left-offset)",
+                }
+              : {
+                  right: offcanvasCollapsed
+                    ? "calc(var(--sidebar-right-offset) - var(--sidebar-width))"
+                    : "var(--sidebar-right-offset)",
+                }),
+          }}
           {...props}
         >
           <div

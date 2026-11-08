@@ -3507,27 +3507,7 @@ export default function Sidebar({
   return (
     <>
       <ThreadContextDragGhost />
-      <SidebarChromeHeader
-        isElectron={isElectron}
-        actions={
-          <SidebarThreadHeader
-            showProjectScope={projectSidebarEnabled}
-            onSearch={() => openCommandPalette()}
-            searchShortcutLabel={shortcutLabelForCommand(
-              keybindings,
-              "commandPalette.toggle",
-            )}
-            projectScope={null}
-            onNewProject={openAddProjectCommandPalette}
-            onNewThread={handleNewThreadClick}
-            newThreadDisabled={projects.length === 0}
-            newThreadShortcutLabel={newThreadShortcutLabel}
-            showProjectPickerHint={
-              !legacySidebarEnabled && projectGroups.length > 0
-            }
-          />
-        }
-      />
+      <SidebarChromeHeader isElectron={isElectron} />
       <SidebarContent
         ref={sidebarContentRef}
         className="min-h-full"
