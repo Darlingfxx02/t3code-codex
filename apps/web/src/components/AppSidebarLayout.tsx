@@ -70,7 +70,7 @@ function WorkspaceGlobalChrome() {
       style={{ left: "var(--workspace-rail-width)" }}
       data-workspace-global-chrome=""
     >
-      <div className="flex min-w-0 basis-(--sidebar-width) shrink-0 items-center gap-2">
+      <div className="flex min-w-0 basis-(--sidebar-width) shrink-0 items-center gap-2 border-border/70 border-r pe-2">
         <SidebarTrigger aria-label="Toggle main sidebar" className="size-7" />
         <Button
           variant="ghost-muted"
