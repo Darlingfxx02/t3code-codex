@@ -6,26 +6,24 @@ on:
         description: Version for both installers
         required: true
         type: string
+      platform:
+        description: Platforms to build
+        type: choice
+        default: both
+        options:
+          - both
+          - windows
+          - macos
 permissions:
   contents: read
 jobs:
   build:
-    name: ${{ matrix.label }}
+    name: ${{ matrix.platform == 'mac' && 'macOS Apple Silicon' || 'Windows x64' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-15
-            platform: mac
-            arch: arm64
-            target: dmg
-            label: macOS Apple Silicon
-          - runner: windows-2025
-            platform: win
-            arch: x64
-            target: nsis
-            label: Windows x64
-    runs-on: ${{ matrix.runner }}
+        platform: ${{ fromJSON(inputs.platform == 'windows' && '["win"]' || inputs.platform == 'macos' && '["mac"]' || '["mac","win"]') }}
+    runs-on: ${{ matrix.platform == 'mac' && 'macos-15' || 'windows-2025' }}
     env:
       T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
       T3CODE_TELEMETRY_ENABLED: "false"
@@ -50,7 +48,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          vp run dist:desktop:artifact --platform "${{ matrix.platform }}" --target "${{ matrix.target }}" --arch "${{ matrix.arch }}" --build-version "$RELEASE_VERSION" --output-dir release --keep-stage --verbose
+          vp run dist:desktop:artifact --platform "${{ matrix.platform }}" --target "${{ matrix.platform == 'mac' && 'dmg' || 'nsis' }}" --arch "${{ matrix.platform == 'mac' && 'arm64' || 'x64' }}" --build-version "$RELEASE_VERSION" --output-dir release --keep-stage --verbose
       - name: Locate packaged app
         id: app
         env:
@@ -70,12 +68,12 @@ jobs:
             ? path.join(dist, dir, 'T3 Code (Beta).app', 'Contents', 'MacOS', 'T3 Code (Beta)')
             : path.join(dist, dir, 'T3 Code (Beta).exe');
           if (!fs.existsSync(executable)) throw new Error(`Missing executable: ${executable}`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `executable=${executable.replaceAll('\\', '/')}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `executable=${executable}\n`);
           JS
       - name: Launch packaged app with isolated test data
         env:
-          ELECTRON_RUN_AS_NODE: ""
-        run: node scripts/smoke-desktop-app.ts --executable "${{ steps.app.outputs.executable }}" --artifacts-dir desktop-launch-check
+          DEBUG: pw:browser
+        run: env -u ELECTRON_RUN_AS_NODE node --unhandled-rejections=warn scripts/smoke-desktop-app.ts --executable "${{ steps.app.outputs.executable }}" --artifacts-dir desktop-launch-check
       - name: Create checksums
         run: |
           node --input-type=module <<'JS'
@@ -83,11 +81,11 @@ jobs:
           import crypto from 'node:crypto';
           const files = fs.readdirSync('release').filter(n => /\.(dmg|zip|exe|blockmap|yml)$/.test(n) && !n.startsWith('builder-')).sort();
           const checksums = files.map(n => `${crypto.createHash('sha256').update(fs.readFileSync('release/' + n)).digest('hex')}  ${n}`);
-          fs.writeFileSync('release/SHA256SUMS-${{ matrix.platform }}-${{ matrix.arch }}.txt', checksums.join('\n') + '\n');
+          fs.writeFileSync('release/SHA256SUMS-${{ matrix.platform }}-${{ matrix.platform == 'mac' && 'arm64' || 'x64' }}.txt', checksums.join('\n') + '\n');
           JS
       - uses: actions/upload-artifact@v7
         with:
-          name: installers-${{ matrix.platform }}-${{ matrix.arch }}
+          name: installers-${{ matrix.platform }}-${{ matrix.platform == 'mac' && 'arm64' || 'x64' }}
           if-no-files-found: error
           compression-level: 0
           path: |
