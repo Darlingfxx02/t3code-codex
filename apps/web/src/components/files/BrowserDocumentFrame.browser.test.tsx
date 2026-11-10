@@ -1,10 +1,15 @@
 import { injectHtmlRenderBootstrap } from "@t3tools/shared/htmlRender";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
 import { render } from "../../../test/render";
 
 import { HtmlRenderDocument } from "./BrowserDocumentFrame";
+import { ExpandedImageDialogHost } from "../chat/ExpandedImageDialog";
+import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
 const sizeChanged = (height: number) => ({
   jsonrpc: "2.0",
@@ -13,6 +18,72 @@ const sizeChanged = (height: number) => ({
 });
 
 describe("HtmlRenderDocument", () => {
+  it("uses the host image viewer before a rendered page's own image handler", async () => {
+    const container = document.createElement("div");
+    const html = injectHtmlRenderBootstrap(
+      `<img alt="Result" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'/%3E" onclick="event.preventDefault(); document.body.dataset.localViewer = 'open'">`,
+    );
+    await using _screen = await render(
+      // oxlint-disable-next-line react/iframe-missing-sandbox -- this local fixture exposes its DOM to image assertions
+      <iframe srcDoc={html} title="Image page" sandbox="allow-scripts allow-same-origin" />,
+      { container },
+    );
+    const frame = container.querySelector("iframe")!;
+    await vi.waitFor(() => expect(frame.contentDocument?.querySelector("img")).not.toBeNull());
+    const image = frame.contentDocument!.querySelector("img")!;
+    const onImage = vi.fn();
+    const listener = (event: MessageEvent) => {
+      if (
+        event.source === frame.contentWindow &&
+        event.data?.method === "t3/notifications/open-image"
+      )
+        onImage(event.data.params);
+    };
+    window.addEventListener("message", listener);
+    using _listener = { [Symbol.dispose]: () => window.removeEventListener("message", listener) };
+    await userEvent.click(frame, { position: { x: 20, y: 20 } });
+    await vi.waitFor(() =>
+      expect(onImage).toHaveBeenCalledWith({ src: image.src, name: "Result" }),
+    );
+    expect(frame.contentDocument!.body.dataset.localViewer).toBeUndefined();
+  });
+
+  it("opens rendered images in the thread viewer with its comment input", async () => {
+    const threadRef = {
+      environmentId: EnvironmentId.make("image-environment"),
+      threadId: ThreadId.make("image-thread"),
+    };
+    const container = document.createElement("div");
+    await using screen = await render(
+      <AppAtomRegistryProvider>
+        <HtmlRenderDocument src="about:blank" title="Image result" threadRef={threadRef} />
+        <ExpandedImageDialogHost
+          threadKey={scopedThreadKey(threadRef)}
+          composer={<textarea aria-label="Image comment" />}
+        />
+      </AppAtomRegistryProvider>,
+      { container },
+    );
+    const frame = container.querySelector("iframe")!;
+    await userEvent.click(frame);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: frame.contentWindow,
+        data: {
+          jsonrpc: "2.0",
+          method: "t3/notifications/open-image",
+          params: {
+            src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>",
+            name: "Result",
+          },
+        },
+      }),
+    );
+    await expect.element(screen.getByRole("dialog")).toBeVisible();
+    await expect.element(screen.getByRole("textbox", { name: "Image comment" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+  });
+
   it("reports the page's first height and ignores messages from other windows", async () => {
     using pageUrl = (() => {
       const page = `<script>parent.postMessage(${JSON.stringify(sizeChanged(321))}, "*");</script>`;

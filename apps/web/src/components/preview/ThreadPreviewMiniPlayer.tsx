@@ -308,6 +308,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
               tabId={tabId}
               pdfUrl={pdfUrl}
               visible
+              interactive={false}
               followSize={false}
               controlPosition="bottom"
               onViewport={(viewport) =>
@@ -508,7 +509,7 @@ function MiniPlayerShell({
         <section
           aria-label={label}
           data-preview-mini-player={sourceKey}
-          className="pointer-events-none absolute select-none outline-none"
+          className="group/mini-player pointer-events-none absolute select-none outline-none"
           role={openOnContentClick ? "button" : undefined}
           tabIndex={openOnContentClick ? 0 : undefined}
           onClick={
@@ -550,12 +551,18 @@ function MiniPlayerShell({
           {openOnContentClick ? (
             <div
               data-preview-open-panel
-              className="pointer-events-auto absolute inset-0 z-[49] cursor-pointer"
+              className="pointer-events-auto absolute inset-0 z-[49] cursor-pointer rounded-[inherit]"
               onClick={(event) => {
                 event.stopPropagation();
                 onOpenInPanel();
               }}
-            />
+            >
+              <span className="absolute inset-0 flex items-center justify-center rounded-[inherit] bg-black/15 opacity-0 transition-opacity group-hover/mini-player:opacity-100 group-focus-within/mini-player:opacity-100 pointer-coarse:hidden">
+                <span className="flex size-10 items-center justify-center rounded-full bg-popover/90 text-popover-foreground shadow-md">
+                  <PanelRightIcon aria-hidden className="size-5" />
+                </span>
+              </span>
+            </div>
           ) : null}
           <div
             ref={handleRef}
@@ -615,7 +622,7 @@ function MiniPlayerShell({
             </div>
           </div>
 
-          <div className="absolute inset-0 z-[47] rounded-[inherit] bg-muted shadow-2xl/35" />
+          <div className="pointer-events-none absolute inset-0 z-[47] rounded-[inherit] bg-muted shadow-2xl/35" />
           {children(frame)}
           <div className="pointer-events-none absolute inset-0 z-[49] rounded-[inherit] ring-1 ring-inset ring-border/80" />
           {RESIZE_HANDLES.map(({ direction, className }) => (

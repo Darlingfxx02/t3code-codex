@@ -144,6 +144,7 @@ export function ServerBrowserSurface(props: {
   readonly threadId: string;
   readonly tabId: string;
   readonly visible: boolean;
+  readonly interactive?: boolean;
   readonly followSize?: boolean;
   readonly controlPosition?: "top" | "bottom";
   readonly onFirstFrame?: () => void;
@@ -159,6 +160,7 @@ export function ServerBrowserSurface(props: {
     threadId,
     tabId,
     visible,
+    interactive = true,
     followSize = true,
     controlPosition = "top",
     onFirstFrame,
@@ -223,6 +225,7 @@ export function ServerBrowserSurface(props: {
 
   // Keep clearInput stable: a new identity reconnects the stream.
   const send = (input: PreviewStreamInput) => {
+    if (!interactive) return;
     clientRef.current?.send(input);
   };
 
@@ -744,30 +747,33 @@ export function ServerBrowserSurface(props: {
     <div
       className={cn("relative flex flex-col overflow-hidden", className)}
       data-server-browser-surface={tabId}
+      inert={!interactive}
       onMouseUp={handleMouseUp}
     >
-      <div
-        className={cn(
-          "visible relative z-20 flex shrink-0 items-center justify-between gap-2 border-border bg-background px-2 py-1",
-          controlPosition === "bottom" ? "order-last border-t" : "border-b",
-        )}
-      >
-        <span role="status" className="text-xs text-muted-foreground">
-          {previewStreamControlLabel(control)}
-        </span>
-        {control?.canOperate ? (
-          <Button
-            variant="outline"
-            size="xs"
-            disabled={control.controller === "another-viewer"}
-            onClick={() =>
-              send({ type: control.controller === "you" ? "releaseControl" : "takeControl" })
-            }
-          >
-            {control.controller === "you" ? "Release control" : "Take control"}
-          </Button>
-        ) : null}
-      </div>
+      {interactive ? (
+        <div
+          className={cn(
+            "visible relative z-20 flex shrink-0 items-center justify-between gap-2 border-border bg-background px-2 py-1",
+            controlPosition === "bottom" ? "order-last border-t" : "border-b",
+          )}
+        >
+          <span role="status" className="text-xs text-muted-foreground">
+            {previewStreamControlLabel(control)}
+          </span>
+          {control?.canOperate ? (
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={control.controller === "another-viewer"}
+              onClick={() =>
+                send({ type: control.controller === "you" ? "releaseControl" : "takeControl" })
+              }
+            >
+              {control.controller === "you" ? "Release control" : "Take control"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="relative min-h-0 flex-1">
         {pdfUrl ? (
           <embed
@@ -802,7 +808,7 @@ export function ServerBrowserSurface(props: {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          disabled={pdfUrl !== null || control?.controller !== "you"}
+          disabled={!interactive || pdfUrl !== null || control?.controller !== "you"}
           defaultValue={INPUT_SENTINEL}
           onFocus={(event) => resetInput(event.currentTarget)}
           className="sr-only top-0 left-0 text-base"

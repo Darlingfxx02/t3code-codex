@@ -11,7 +11,7 @@ import {
   PlusIcon,
   Trash2Icon,
 } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type {
   EnvironmentId,
   ModelSelection,
@@ -19,7 +19,6 @@ import type {
   ProjectId,
   ScheduledTask,
   ScheduledTaskId,
-  ScheduledTaskSchedule,
   ScheduledTaskUpsertInput,
   ScheduledTaskWebhookDeliverySummary,
   ThreadId,
@@ -44,7 +43,6 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
-import { formatRelativeTime } from "../../timestampFormat";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import { providerInstanceEntriesFor } from "../../providerInstances";
@@ -53,7 +51,7 @@ import { requestConfirmDialog } from "../../confirmDialog";
 import { webhookAddress } from "@t3tools/client-runtime/webhook-address";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { useNowMinute } from "../../hooks/useNowMinute";
+import { ScheduledRelativeLabel } from "../scheduledTaskPresentation";
 import {
   useEnvironment,
   useEnvironmentHttpBaseUrl,
@@ -90,6 +88,9 @@ import {
   defaultScheduledTaskProjectId,
   matchesScheduledTaskScope,
   scheduleFromDraft,
+  scheduleLabel,
+  scheduledTaskRunStatusLabel,
+  scheduledTaskStatusVariant,
   scheduledTaskDefaultModel,
   taskToDraft,
   type DraftState,
@@ -294,53 +295,6 @@ function splitModelKey(value: string): ModelSelection | null {
   };
 }
 
-const ONCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
-  if (schedule.type === "webhook") return "On webhook";
-  if (schedule.type === "once") return `Once, ${ONCE_FORMATTER.format(new Date(schedule.runAt))}`;
-  if (schedule.type === "interval") {
-    const minutes = schedule.everyMs / 60_000;
-    return Number.isInteger(minutes)
-      ? `Every ${minutes} min`
-      : `Every ${Math.round(schedule.everyMs / 1000)} sec`;
-  }
-  const weekdays = schedule.weekdays ?? [];
-  const days =
-    weekdays.length === 0
-      ? "Daily"
-      : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
-        ? "Weekdays"
-        : weekdays.map((day) => WEEKDAY_LABELS[day]).join(", ");
-  return `${days} at ${schedule.timeOfDay}`;
-}
-
-/** formatRelativeTime handles only the past; upcoming runs need future labels. */
-function relativeLabel(value: string | null, nowMs: number): string {
-  if (!value) return "Not scheduled";
-  const diffMs = new Date(value).getTime() - nowMs;
-  if (diffMs <= 0) {
-    const relative = formatRelativeTime(value, nowMs);
-    if (!relative) return "Not scheduled";
-    return relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
-  }
-  const minutes = Math.ceil(diffMs / 60_000);
-  if (minutes < 2) return "in under a minute";
-  if (minutes < 60) return `in ${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  return `in ${Math.round(hours / 24)}d`;
-}
-
-// Use the label's minute tick because the compiler caches render-time Date.now() on the timestamp.
-export function ScheduledRelativeLabel(props: { value: string | null }) {
-  const nowMinute = useNowMinute();
-  return relativeLabel(props.value, Date.parse(`${nowMinute}:00.000Z`));
-}
-
 function deliveryOutcomeVariant(outcome: string) {
   if (outcome === "accepted") return "success";
   if (
@@ -356,16 +310,13 @@ function deliveryOutcomeVariant(outcome: string) {
   return "outline";
 }
 
-function statusVariant(status: ScheduledTask["lastRunStatus"]) {
-  if (status === "failed") return "error";
-  if (status === "succeeded") return "success";
-  if (status === "running") return "info";
-  return "outline";
-}
-
 export function ScheduledTasksSettings(target: {
   readonly environmentId?: EnvironmentId;
   readonly taskId?: ScheduledTaskId | undefined;
+  readonly returnEnvironmentId?: EnvironmentId;
+  readonly returnTaskId?: ScheduledTaskId;
+  readonly create?: boolean;
+  readonly returnTo?: "automations";
 }) {
   const { scope, environments, connectedEnvironments, environment } = useSettingsScope();
   const [editor, setEditor] = useState<{
@@ -398,23 +349,24 @@ export function ScheduledTasksSettings(target: {
   // the session until close, so a disconnect that disables the query cannot drop unsaved edits.
   // An editor the user already opened wins: a late-loading link must not replace its draft.
   const [openedLinkTaskId, setOpenedLinkTaskId] = useState<ScheduledTaskId | undefined>();
-  if (target.taskId === undefined && openedLinkTaskId !== undefined) {
-    setOpenedLinkTaskId(undefined);
-  }
-  if (linkedTask && linkedEnvironmentId !== undefined && openedLinkTaskId !== target.taskId) {
-    setOpenedLinkTaskId(target.taskId);
-    if (editor === null) setEditor({ environmentId: linkedEnvironmentId, task: linkedTask });
-  }
+  // Synchronizes a deep-link target into the editor once its live task is available.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- deep-link lifecycle owns editor state
+  useEffect(() => {
+    if (target.taskId === undefined) {
+      if (openedLinkTaskId !== undefined) {
+        // oxlint-disable-next-line react/set-state-in-effect -- deep-link cleanup follows the committed URL state
+        setOpenedLinkTaskId(undefined);
+      }
+      return;
+    }
+    if (linkedTask && linkedEnvironmentId !== undefined && openedLinkTaskId !== target.taskId) {
+      setOpenedLinkTaskId(target.taskId);
+      setEditor((current) =>
+        current === null ? { environmentId: linkedEnvironmentId, task: linkedTask } : current,
+      );
+    }
+  }, [linkedEnvironmentId, linkedTask, openedLinkTaskId, target.taskId]);
   const navigate = useNavigate({ from: "/settings/scheduled-tasks" });
-  const closeEditor = () => {
-    setEditor(null);
-    if (target.taskId === undefined) return;
-    void navigate({
-      to: "/settings/scheduled-tasks",
-      search: ({ taskId: _closed, ...rest }) => rest,
-      replace: true,
-    });
-  };
   const createPermissions = useAtomValue(
     scheduledTaskCreatePermissionsAtom(
       environmentIdsKey(connectedEnvironments.map((entry) => entry.environmentId)),
@@ -423,14 +375,71 @@ export function ScheduledTasksSettings(target: {
   const permittedEnvironments = connectedEnvironments.filter(
     (_entry, index) => createPermissions[index],
   );
-  const creationEnvironment =
-    permittedEnvironments.find(
-      (entry) => entry.environmentId === defaultEnvironment?.environmentId,
-    ) ?? permittedEnvironments[0];
+  const creationEnvironment = target.environmentId
+    ? permittedEnvironments.find((entry) => entry.environmentId === target.environmentId)
+    : (permittedEnvironments.find(
+        (entry) => entry.environmentId === defaultEnvironment?.environmentId,
+      ) ?? permittedEnvironments[0]);
+  const [openedCreate, setOpenedCreate] = useState(false);
+  // Synchronizes the create query flag into the editor without mutating during render.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- create query lifecycle owns editor state
+  useEffect(() => {
+    if (!target.create) {
+      if (openedCreate) {
+        // oxlint-disable-next-line react/set-state-in-effect -- create query cleanup follows the committed URL state
+        setOpenedCreate(false);
+      }
+      return;
+    }
+    if (creationEnvironment && !openedCreate && editor === null) {
+      setOpenedCreate(true);
+      setEditor((current) =>
+        current === null
+          ? { environmentId: creationEnvironment.environmentId, task: null }
+          : current,
+      );
+    }
+  }, [creationEnvironment, editor, openedCreate, target.create]);
+  const closeEditorAndReturn = (saved?: {
+    environmentId: EnvironmentId;
+    taskId: ScheduledTaskId;
+  }) => {
+    const returnEnvironmentId =
+      saved?.environmentId ??
+      editor?.environmentId ??
+      target.returnEnvironmentId ??
+      target.environmentId;
+    const returnTaskId = saved?.taskId ?? target.returnTaskId ?? target.taskId;
+    setEditor(null);
+    if (target.returnTo === "automations") {
+      void navigate({
+        to: "/automations",
+        search: {
+          ...(returnEnvironmentId ? { environmentId: returnEnvironmentId } : {}),
+          ...(returnTaskId ? { taskId: returnTaskId } : {}),
+        },
+        replace: true,
+      });
+      return;
+    }
+    if (target.taskId === undefined && target.create !== true) return;
+    void navigate({
+      to: "/settings/scheduled-tasks",
+      search: ({
+        taskId: _closed,
+        create: _created,
+        returnTo: _returnTo,
+        returnEnvironmentId: _returnEnvironmentId,
+        returnTaskId: _returnTaskId,
+        ...rest
+      }) => rest,
+      replace: true,
+    });
+  };
   return (
     <SettingsPageContainer>
       <SettingsSection
-        title="Scheduled tasks"
+        title="Automations"
         variant="plain"
         headerAction={
           <Button
@@ -443,7 +452,7 @@ export function ScheduledTasksSettings(target: {
             }
           >
             <PlusIcon className="size-3" />
-            New task
+            New automation
           </Button>
         }
       >
@@ -458,7 +467,7 @@ export function ScheduledTasksSettings(target: {
                 <Clock3Icon />
               </EmptyMedia>
               <EmptyTitle>No environments available</EmptyTitle>
-              <EmptyDescription>Connect an environment to manage scheduled tasks.</EmptyDescription>
+              <EmptyDescription>Connect an environment to manage automations.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : environments.length > 1 ? (
@@ -485,7 +494,7 @@ export function ScheduledTasksSettings(target: {
           key={`${editor.environmentId}:${editor.task?.id ?? "new"}`}
           initialEnvironmentId={editor.environmentId}
           task={editor.task}
-          onClose={closeEditor}
+          onClose={closeEditorAndReturn}
         />
       ) : null}
     </SettingsPageContainer>
@@ -537,9 +546,9 @@ function ScheduledTaskEnvironmentList({
   const populated = loaded.filter((state) => state.tasks && state.tasks.length > 0);
   const summaries: Record<string, string[]> = {
     "Not connected:": [],
-    "Loading scheduled tasks on": [],
-    "Could not load scheduled tasks:": [],
-    "No tasks on": [],
+    "Loading automations on": [],
+    "Could not load automations:": [],
+    "No automations on": [],
   };
   for (const { environment, connected, tasks, error } of states) {
     const label = settingsScopeEnvironmentLabel(environment, environments);
@@ -548,11 +557,11 @@ function ScheduledTaskEnvironmentList({
         `${label} (${connectionStatusTitle(environment.connection)})`,
       );
     } else if (error !== null) {
-      summaries["Could not load scheduled tasks:"]!.push(`${label}: ${error}`);
+      summaries["Could not load automations:"]!.push(`${label}: ${error}`);
     } else if (!tasks) {
-      summaries["Loading scheduled tasks on"]!.push(label);
+      summaries["Loading automations on"]!.push(label);
     } else if (tasks.length === 0 && populated.length > 0) {
-      summaries["No tasks on"]!.push(label);
+      summaries["No automations on"]!.push(label);
     }
   }
 
@@ -590,14 +599,14 @@ function ScheduledTaskEnvironmentList({
       })}
       {taskId && linkedState?.tasks && linkedState.error === null && !linkedTask ? (
         <SettingsRow
-          title="Task unavailable"
+          title="Automation unavailable"
           description="This task was deleted or belongs to a different project. Check your project filter."
           role="status"
         />
       ) : null}
       {populated.length === 0 && loaded.length > 0 ? (
         <SettingsRow
-          title="No scheduled tasks"
+          title="No automations"
           description="No tasks match this environment and project selection."
         />
       ) : null}
@@ -680,24 +689,24 @@ function ScheduledTaskEnvironmentSection({
       {!connected ? (
         <SettingsRow
           title="Environment disconnected"
-          description={`Reconnect ${environment.label} to view its scheduled tasks.`}
+          description={`Reconnect ${environment.label} to view its automations.`}
         />
       ) : tasksQuery.error ? (
-        <SettingsRow title="Could not load scheduled tasks" description={tasksQuery.error} />
+        <SettingsRow title="Could not load automations" description={tasksQuery.error} />
       ) : !tasks ? (
-        <SettingsRow title="Loading scheduled tasks…" role="status" />
+        <SettingsRow title="Loading automations…" role="status" />
       ) : (
         <>
           {taskId && !linkedTask ? (
             <SettingsRow
-              title="Task unavailable"
+              title="Automation unavailable"
               description="This task was deleted or belongs to a different project. Check your project filter."
               role="status"
             />
           ) : null}
           {tasks.length === 0 ? (
             <SettingsRow
-              title="No scheduled tasks"
+              title="No automations"
               description="No tasks match this environment and project selection."
             />
           ) : (
@@ -730,6 +739,7 @@ function ScheduledTaskRow({
   );
   const [busy, setBusy] = useState(false);
   const [deliveriesOpen, setDeliveriesOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const isWebhook = task.schedule.type === "webhook";
   const toggle = useAtomCommand(serverEnvironment.setScheduledTaskEnabled, {
     label: "scheduled task enabled",
@@ -741,7 +751,14 @@ function ScheduledTaskRow({
     label: "scheduled task delete",
   });
   const act = async (action: "toggle" | "run" | "delete") => {
-    if (busy || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
+    if (
+      busy ||
+      !canOperate ||
+      (action === "run" && task.blockedByPolicy !== undefined) ||
+      (action === "run" && task.lastRunStatus === "running") ||
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
+    )
+      return;
     setBusy(true);
     const result =
       action === "toggle"
@@ -754,94 +771,131 @@ function ScheduledTaskRow({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not update scheduled task",
+          title: "Could not update automation",
           description: String(squashAtomCommandFailure(result)),
         }),
       );
     }
   };
   return (
-    <SettingsRow
-      title={task.title}
-      description={<span className="line-clamp-2">{task.prompt}</span>}
-      status={
-        <div className="flex flex-wrap items-center gap-2">
-          <span>
-            {scheduleLabel(task.schedule)} ·{" "}
-            {task.blockedByPolicy !== undefined ? (
-              task.blockedByPolicy
-            ) : !task.enabled ? (
-              "Paused"
-            ) : isWebhook ? (
-              "Listening"
-            ) : task.nextRunAt ? (
-              <>
-                Next run <ScheduledRelativeLabel value={task.nextRunAt} />
-              </>
-            ) : (
-              "Not scheduled"
-            )}
-          </span>
-          {task.lastRunStatus !== "never" ? (
-            <Badge variant={statusVariant(task.lastRunStatus)}>{task.lastRunStatus}</Badge>
-          ) : null}
-          {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
-        </div>
-      }
-      control={
-        <div className="flex items-center gap-2">
-          <Switch
-            checked={task.enabled}
-            disabled={busy || !canOperate}
-            aria-label={`Enable ${task.title}`}
-            onCheckedChange={() => void act("toggle")}
-          />
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  disabled={busy || !canOperate}
-                  aria-label={`Actions for ${task.title}`}
-                />
-              }
-            >
-              <MoreHorizontalIcon className="size-4" />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              <MenuItem onClick={onEdit}>
-                <PencilIcon />
-                Edit
-              </MenuItem>
-              {isWebhook ? (
-                <MenuItem onClick={() => setDeliveriesOpen(true)}>
-                  <InboxIcon />
-                  Deliveries
-                </MenuItem>
+    <>
+      <SettingsRow
+        title={task.title}
+        description={<span className="line-clamp-2">{task.prompt}</span>}
+        status={
+          <div className="flex flex-wrap items-center gap-2">
+            <span>
+              {scheduleLabel(task.schedule)} ·{" "}
+              {task.blockedByPolicy !== undefined ? (
+                task.blockedByPolicy
+              ) : !task.enabled ? (
+                "Paused"
+              ) : isWebhook ? (
+                "Listening"
+              ) : task.nextRunAt ? (
+                <>
+                  Next run <ScheduledRelativeLabel value={task.nextRunAt} />
+                </>
               ) : (
-                <MenuItem onClick={() => void act("run")}>
-                  <PlayIcon />
-                  Run now
-                </MenuItem>
+                "Not scheduled"
               )}
-              <MenuSeparator />
-              <MenuItem onClick={() => void act("delete")}>
-                <Trash2Icon />
-                Delete
-              </MenuItem>
-            </MenuPopup>
-          </Menu>
-          {deliveriesOpen ? (
-            <WebhookDeliveriesDialog
-              environmentId={environmentId}
-              task={task}
-              onClose={() => setDeliveriesOpen(false)}
+            </span>
+            {task.lastRunStatus !== "never" ? (
+              <Badge variant={scheduledTaskStatusVariant(task.lastRunStatus)}>
+                {scheduledTaskRunStatusLabel(task.lastRunStatus)}
+              </Badge>
+            ) : null}
+            {task.lastRunError ? (
+              <span className="text-destructive">{task.lastRunError}</span>
+            ) : null}
+          </div>
+        }
+        control={
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={task.enabled}
+              disabled={busy || !canOperate}
+              aria-label={`${task.enabled ? "Disable" : "Enable"} ${task.title}`}
+              onCheckedChange={() => void act("toggle")}
             />
-          ) : null}
-        </div>
-      }
-    />
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={busy || !canOperate}
+                    aria-label={`Actions for ${task.title}`}
+                  />
+                }
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <MenuItem onClick={onEdit}>
+                  <PencilIcon />
+                  Edit
+                </MenuItem>
+                {isWebhook ? (
+                  <MenuItem onClick={() => setDeliveriesOpen(true)}>
+                    <InboxIcon />
+                    Deliveries
+                  </MenuItem>
+                ) : (
+                  <MenuItem
+                    disabled={
+                      busy ||
+                      !canOperate ||
+                      task.blockedByPolicy !== undefined ||
+                      task.lastRunStatus === "running"
+                    }
+                    onClick={() => void act("run")}
+                  >
+                    <PlayIcon />
+                    Run now
+                  </MenuItem>
+                )}
+                <MenuSeparator />
+                <MenuItem onClick={() => setDeleteOpen(true)}>
+                  <Trash2Icon />
+                  Delete
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
+            {deliveriesOpen ? (
+              <WebhookDeliveriesDialog
+                environmentId={environmentId}
+                task={task}
+                onClose={() => setDeliveriesOpen(false)}
+              />
+            ) : null}
+          </div>
+        }
+      />
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>Delete “{task.title}” automation?</DialogTitle>
+            <DialogDescription>
+              This automation and its webhook state will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button
+              variant="destructive"
+              disabled={busy || !canOperate}
+              onClick={() => {
+                setDeleteOpen(false);
+                void act("delete");
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+    </>
   );
 }
 
@@ -885,7 +939,7 @@ function WebhookDeliveriesDialog({
       <DialogPopup className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Deliveries · {task.title}</DialogTitle>
-          <DialogDescription>Recent requests to this task's webhook URL.</DialogDescription>
+          <DialogDescription>Recent requests to this automation's webhook URL.</DialogDescription>
         </DialogHeader>
         <DialogPanel>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -1047,6 +1101,7 @@ function WebhookEndpointField({
         variant: "destructive",
       })) ?? window.confirm("Rotate this webhook URL? The current URL stops working.");
     if (!confirmed) return;
+    if (!canRotate || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
     setRotating(true);
     const result = await rotate({ environmentId, input: { id: task.id } });
     setRotating(false);
@@ -1117,7 +1172,7 @@ function ScheduledTaskEditorDialog({
 }: {
   readonly initialEnvironmentId: EnvironmentId;
   readonly task: ScheduledTask | null;
-  readonly onClose: () => void;
+  readonly onClose: (saved?: { environmentId: EnvironmentId; taskId: ScheduledTaskId }) => void;
 }) {
   const [saving, setSaving] = useState(false);
   return (
@@ -1184,7 +1239,7 @@ function ScheduledTaskEditorForm({
   readonly task: ScheduledTask | null;
   readonly saving: boolean;
   readonly onSavingChange: (saving: boolean) => void;
-  readonly onClose: () => void;
+  readonly onClose: (saved?: { environmentId: EnvironmentId; taskId: ScheduledTaskId }) => void;
 }) {
   const { scope, connectedEnvironments } = useSettingsScope();
   const [environmentId, setEnvironmentId] = useState(initialEnvironmentId);
@@ -1276,6 +1331,7 @@ function ScheduledTaskEditorForm({
 
   const submit = async () => {
     if (
+      !canOperate ||
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
       submissionPending.current ||
       saving ||
@@ -1291,7 +1347,7 @@ function ScheduledTaskEditorForm({
       !projects.some((project) => project.id === selectedProjectId) ||
       selection === null
     ) {
-      reportFailure("Scheduled task is incomplete", "Add a title, prompt, project, and model.");
+      reportFailure("Automation is incomplete", "Add a title, prompt, project, and model.");
       return;
     }
     const parsedFilters = parseWebhookFilterDrafts(draft.filters);
@@ -1373,17 +1429,17 @@ function ScheduledTaskEditorForm({
     if (result._tag === "Failure") {
       submissionPending.current = false;
       if (!isAtomCommandInterrupted(result)) {
-        reportFailure("Could not save scheduled task", squashAtomCommandFailure(result));
+        reportFailure("Could not save automation", squashAtomCommandFailure(result));
       }
       return;
     }
-    onClose();
+    onClose({ environmentId, taskId: result.value.task.id });
   };
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{draft.editingId ? "Edit task" : "New task"}</DialogTitle>
+        <DialogTitle>{draft.editingId ? "Edit automation" : "New automation"}</DialogTitle>
         <DialogDescription>
           Run a prompt automatically on an interval, at a fixed time, once at a set date, or when a
           webhook is called.
@@ -1465,7 +1521,7 @@ function ScheduledTaskEditorForm({
           ) : null}
           {editingTaskMissing ? (
             <p className="text-xs text-destructive" role="status">
-              This scheduled task no longer exists.
+              This automation no longer exists.
             </p>
           ) : null}
           <Field label="Name" htmlFor="scheduled-task-title">
@@ -1946,7 +2002,7 @@ function ScheduledTaskEditorForm({
           }
           onClick={() => void submit()}
         >
-          {draft.editingId ? "Save task" : "Create task"}
+          {draft.editingId ? "Save automation" : "Create automation"}
         </Button>
       </DialogFooter>
     </>

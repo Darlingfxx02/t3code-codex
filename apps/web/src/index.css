@@ -130,7 +130,15 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-saturation: 1.14;
   --desktop-window-right-resize-inset: 0px;
   --workspace-topbar-height: 44px;
-  --workspace-rail-width: 3.75rem;
+  /* The window row above the shell card. Its controls center on it, as do the macOS traffic
+     lights (MACOS_WORKSPACE_CHROME_HEIGHT in apps/desktop/src/window/DesktopWindow.ts). */
+  --workspace-chrome-height: calc(var(--workspace-topbar-height) + 0.25rem);
+  --workspace-shell-inset: 0.375rem;
+  /* The icon rail and the chrome row share one square unit. Keeping these
+     dimensions coupled prevents the rail from starting wider than the header. */
+  --workspace-rail-width: var(--workspace-chrome-height);
+  --automations-sidebar-width: 19rem;
+  --design-sidebar-width: 15rem;
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -164,6 +172,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 .wco {
   --native-titlebar-height: env(titlebar-area-height, 0px);
   --workspace-topbar-height: max(40px, env(titlebar-area-height, 44px));
+  /* Native overlay controls fill the titlebar area, so ours center on it too. */
+  --workspace-chrome-height: var(--workspace-topbar-height);
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
   --workspace-controls-right: calc(
@@ -1717,9 +1727,7 @@ html[data-theme-id="silver-glass"] [data-app-sidebar] [data-slot="sidebar-inner"
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   border: 0;
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 7%),
-    4px 0 12px -10px rgb(0 0 0 / 36%);
+  box-shadow: 4px 0 12px -10px rgb(0 0 0 / 36%);
 }
 
 html[data-theme-id="silver-glass"] [data-app-sidebar] [data-slot="sidebar-container"] {

@@ -6,7 +6,12 @@ import { isPreviewAvailableFor } from "../browser/previewRuntime";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { dispatchPreviewAction, type PreviewAction } from "../components/preview/previewActionBus";
-import { isAppModalPage } from "../components/sidebar/mainAppLocation";
+import {
+  isAppModalPage,
+  isAutomationsPage,
+  isDesignPage,
+  isSettingsPage,
+} from "../components/sidebar/mainAppLocation";
 import { shouldCreateNewThreadInCurrentProject } from "../components/Sidebar.logic";
 import { createNewThreadHandler, resolveDefaultProjectRef } from "../hooks/useHandleNewThread";
 import { createScratchProjectActions } from "../hooks/useScratchProject";
@@ -30,7 +35,7 @@ const CHAT_ROUTE_ID = "/_chat";
 
 /**
  * New-thread and preview commands, live while a chat route is showing and no
- * modal page (Settings, Usage) covers it. Everything is read at event time, so
+ * shell or modal workspace covers it. Everything is read at event time, so
  * the scope is registered once instead of re-registering on every store change.
  */
 export function installChatRouteCommands(router: AnyRouter): () => void {
@@ -167,6 +172,12 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       when: () =>
         router.state.matches.some((match) => match.routeId === CHAT_ROUTE_ID) &&
         !router.state.matches.some((match) => isAppModalPage(match.pathname)) &&
+        !router.state.matches.some(
+          (match) =>
+            isSettingsPage(match.pathname) ||
+            isAutomationsPage(match.pathname) ||
+            isDesignPage(match.pathname),
+        ) &&
         !isCommandPaletteOpen(),
       context: () => {
         const threadRef = readRouteThreadRef();

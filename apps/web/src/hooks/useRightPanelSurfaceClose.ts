@@ -151,18 +151,13 @@ export function useRightPanelSurfaceClose(input: {
     const otherLabels = surface.terminalIds
       .filter((terminalId) => terminalId !== surface.activeTerminalId)
       .map(labelFor);
-    void confirmTerminalClose(
-      [labelFor(surface.activeTerminalId), ...otherLabels],
-      {
-        isPristine:
-          terminalPristineById !== undefined &&
-          surface.terminalIds.every((terminalId) => terminalPristineById.get(terminalId) === true),
-      },
-    ).then(
-      (confirmed) => {
-        if (confirmed) finishClose([surface]);
-      },
-    );
+    void confirmTerminalClose([labelFor(surface.activeTerminalId), ...otherLabels], {
+      isPristine:
+        terminalPristineById !== undefined &&
+        surface.terminalIds.every((terminalId) => terminalPristineById.get(terminalId) === true),
+    }).then((confirmed) => {
+      if (confirmed) finishClose([surface]);
+    });
   });
   const closeOtherSurfaces = useStableCallback((surface: RightPanelSurface) =>
     closeSurfaces(surfaces.filter((entry) => entry.id !== surface.id)),

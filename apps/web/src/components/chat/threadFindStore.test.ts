@@ -64,19 +64,19 @@ describe("thread find store", () => {
     detach();
   });
 
-  it("keeps find over Settings and Usage, and closes it on any other route", () => {
+  it("closes find when Settings replaces the thread but preserves it for modal routes", () => {
     setup();
     openThreadFindOnQuery(threadKey, { query: "x" });
     retainThreadFindForRoute({ modalPage: false, threadRef });
-    retainThreadFindForRoute({ modalPage: true, threadRef: null });
-    expect(useThreadFindStore.getState()).toMatchObject({ threadKey, query: "x" });
+    retainThreadFindForRoute({ modalPage: false, threadRef: null });
+    expect(useThreadFindStore.getState()).toMatchObject({ threadKey: null, query: "" });
 
     retainThreadFindForRoute({ modalPage: false, threadRef: otherRef });
     expect(useThreadFindStore.getState()).toMatchObject({ threadKey: null, query: "" });
 
     openThreadFindOnQuery(threadKey, { query: "x" });
-    retainThreadFindForRoute({ modalPage: false, threadRef: null });
-    expect(useThreadFindStore.getState().threadKey).toBeNull();
+    retainThreadFindForRoute({ modalPage: true, threadRef: null });
+    expect(useThreadFindStore.getState()).toMatchObject({ threadKey, query: "x" });
   });
 });
 

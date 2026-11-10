@@ -1349,7 +1349,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
         <TimelineRowActivityCtx value={activityState}>
           <TooltipScrollDismissArea
             ref={attachTimelineViewportElement}
-            className="relative h-full min-h-0"
+            // Keep masked scrolling and recycled rows on a bounded layer, separate from sibling panels.
+            className="relative h-full min-h-0 transform-gpu [contain:paint]"
             data-assistant-citation-viewport="true"
           >
             {onCiteAssistantText && citationThreadRef ? (

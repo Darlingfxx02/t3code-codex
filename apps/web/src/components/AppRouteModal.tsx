@@ -6,9 +6,10 @@ import { useCloseAppModal } from "./sidebar/mainAppLocation";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { cn } from "../lib/utils";
 
 /**
- * Large modal for the Settings and Usage routes. Esc, the close button, or a press on the
+ * Large modal for the Usage route. Esc, the close button, or a press on the
  * backdrop returns to the page that opened it. Keyboard guards that skip dialogs exempt
  * `[data-app-modal]`, because these pages own their shortcuts.
  */
@@ -67,14 +68,14 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
   );
 }
 
-export function AppRouteModalClose() {
+export function AppRouteModalClose({ className }: { className?: string } = {}) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <DialogPrimitive.Close
             aria-label="Close"
-            render={<Button size="icon-sm" variant="ghost" />}
+            render={<Button className={cn(className)} size="icon-sm" variant="ghost" />}
           />
         }
       >

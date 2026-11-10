@@ -32,7 +32,7 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { assetFileResponse } from "../http.ts";
-import { ASSET_ROUTE_PREFIX, issueAssetUrl, readMcpAppHtml, resolveAsset } from "./AssetAccess.ts";
+import { ASSET_ROUTE_PREFIX, issueAssetUrl, readPreviewHtml, resolveAsset } from "./AssetAccess.ts";
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 import { fakeSourceControlDriverInstance } from "@t3tools/source-control-testing/fakeSourceControlDriver";
@@ -123,7 +123,7 @@ const layerTest = Layer.mergeAll(
 ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 describe("AssetAccess", () => {
-  describe("readMcpAppHtml", () => {
+  describe("readPreviewHtml", () => {
     it.effect("accepts snapshots at the stored HTML byte limit", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -133,7 +133,7 @@ describe("AssetAccess", () => {
         const limit = MCP_APP_MAX_HTML_BYTES + 128 * 1024;
         yield* fileSystem.writeFile(file, new Uint8Array(limit).fill(120));
 
-        const bytes = yield* readMcpAppHtml(file);
+        const bytes = yield* readPreviewHtml(file);
         expect(bytes?.byteLength).toBe(limit);
         expect(bytes?.every((byte) => byte === 120)).toBe(true);
       }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
@@ -148,7 +148,7 @@ describe("AssetAccess", () => {
         const limit = MCP_APP_MAX_HTML_BYTES + 128 * 1024;
         for (const size of [limit + 1, limit * 2]) {
           yield* fileSystem.writeFile(file, new Uint8Array(size).fill(120));
-          expect(yield* readMcpAppHtml(file)).toBeNull();
+          expect(yield* readPreviewHtml(file)).toBeNull();
         }
       }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
     );
@@ -162,7 +162,7 @@ describe("AssetAccess", () => {
         for (const html of ["", "<body>" + "☃".repeat(100_000) + "</body>"]) {
           const expected = new TextEncoder().encode(html);
           yield* fileSystem.writeFile(file, expected);
-          const bytes = yield* readMcpAppHtml(file);
+          const bytes = yield* readPreviewHtml(file);
           expect(bytes?.byteLength).toBe(expected.byteLength);
           expect(bytes && new TextDecoder().decode(bytes)).toBe(html);
         }
@@ -175,7 +175,9 @@ describe("AssetAccess", () => {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-mcp-html-" });
-        const error = yield* readMcpAppHtml(path.join(directory, "missing.html")).pipe(Effect.flip);
+        const error = yield* readPreviewHtml(path.join(directory, "missing.html")).pipe(
+          Effect.flip,
+        );
         expect(error._tag).toBe("PlatformError");
         expect(error.reason._tag).toBe("NotFound");
       }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
@@ -1203,7 +1205,7 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
-  it.effect("signs MCP render intent only for inline HTML attachments", () =>
+  it.effect("signs render intent only for inline HTML attachments", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
       const fs = yield* FileSystem.FileSystem;
@@ -1215,13 +1217,18 @@ describe("AssetAccess", () => {
           path.join(config.attachmentsDir, `${attachmentId}.${extension}`),
           "capture",
         );
-        for (const disposition of ["inline", "attachment"] as const) {
+        for (const [renderIntent, disposition] of (["mcp-app", "html-render"] as const).flatMap(
+          (intent) =>
+            (["inline", "attachment"] as const).map(
+              (disposition) => [intent, disposition] as const,
+            ),
+        )) {
           const result = yield* issueAssetUrl({
             resource: {
               _tag: "attachment",
               attachmentId,
               disposition,
-              renderIntent: "mcp-app",
+              renderIntent,
             },
           });
           const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
@@ -1232,7 +1239,7 @@ describe("AssetAccess", () => {
           );
           if (asset?.kind !== "file") throw new Error("Expected attachment file");
           expect("renderIntent" in asset ? asset.renderIntent : undefined).toBe(
-            extension === "html" && disposition === "inline" ? "mcp-app" : undefined,
+            extension === "html" && disposition === "inline" ? renderIntent : undefined,
           );
           const token = suffix.slice(0, separator);
           const [payload, signature] = token.split(".");

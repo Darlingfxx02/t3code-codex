@@ -157,7 +157,7 @@ describe("ScheduledTasksSettings", () => {
         <ScheduledTasksSettings />
       </RegistryContext.Provider>,
     );
-    const create = screen.getByRole("button", { name: "New task" });
+    const create = screen.getByRole("button", { name: "New automation" });
     await expect.element(create).toBeEnabled();
     await act(() => registry.set(permissions.get(secondaryId)!, false));
     await expect.element(create).toBeDisabled();
@@ -167,11 +167,20 @@ describe("ScheduledTasksSettings", () => {
     await expect.element(page.getByLabelText("Runs on")).toHaveTextContent("Secondary");
   });
 
+  it("keeps a deep-linked create in its requested environment", async () => {
+    setup();
+    state.secondary = true;
+    await using _screen = await render(
+      <ScheduledTasksSettings environmentId={secondaryId} create returnTo="automations" />,
+    );
+    await expect.element(page.getByLabelText("Runs on")).toHaveTextContent("Secondary");
+  });
+
   it("keeps the permitted representative as the creation target", async () => {
     setup();
     state.secondary = true;
     await using screen = await render(<ScheduledTasksSettings />);
-    await screen.getByRole("button", { name: "New task" }).click();
+    await screen.getByRole("button", { name: "New automation" }).click();
     await expect.element(page.getByLabelText("Runs on")).toHaveTextContent("Laptop");
   });
 
@@ -179,7 +188,7 @@ describe("ScheduledTasksSettings", () => {
     setup();
     state.connected = false;
     await using screen = await render(<ScheduledTasksSettings />);
-    await expect.element(screen.getByRole("button", { name: "New task" })).toBeDisabled();
+    await expect.element(screen.getByRole("button", { name: "New automation" })).toBeDisabled();
   });
 
   it("keeps a linked task's unsaved edits across a disconnect and reconnect", async () => {
@@ -204,7 +213,7 @@ describe("ScheduledTasksSettings", () => {
     setup();
     state.tasksLoaded = false;
     await using screen = await render(<ScheduledTasksSettings taskId={task.id} />);
-    await userEvent.click(page.getByRole("button", { name: "New task" }));
+    await userEvent.click(page.getByRole("button", { name: "New automation" }));
     const dialog = page.getByRole("dialog");
     const name = dialog.getByRole("textbox", { name: "Name" });
     await userEvent.fill(name, "My draft");
@@ -212,7 +221,9 @@ describe("ScheduledTasksSettings", () => {
     state.tasksLoaded = true;
     await screen.rerender(<ScheduledTasksSettings taskId={task.id} />);
 
-    await expect.element(dialog.getByRole("heading", { name: "New task" })).toBeInTheDocument();
+    await expect
+      .element(dialog.getByRole("heading", { name: "New automation" }))
+      .toBeInTheDocument();
     await expect.element(name).toHaveValue("My draft");
   });
 });

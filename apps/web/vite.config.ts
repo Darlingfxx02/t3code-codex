@@ -23,6 +23,7 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
+import { designReactRuntimePlugin } from "./vite/designReactRuntime";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -267,6 +268,7 @@ export default defineConfig(() => {
     },
     assetsInclude: ["**/*.wasm"],
     plugins: [
+      designReactRuntimePlugin(),
       devCompressionPlugin(),
       chunkCycleGuardPlugin(),
       builtDev

@@ -36,6 +36,11 @@ export function usePreviewPanelInlineSize(
     minWidth: PREVIEW_PANEL_MIN_WIDTH,
     maxWidth,
     edge: "left",
+    onLiveResize: (nextWidth) => {
+      document
+        .querySelector<HTMLElement>("[data-workspace-right-tabs]")
+        ?.style.setProperty("--workspace-right-tabs-width", `${nextWidth}px`);
+    },
   });
   const observeRow = (host: HTMLElement) => {
     const row = container ?? (enabled ? host.parentElement : null) ?? null;
@@ -44,6 +49,9 @@ export function usePreviewPanelInlineSize(
     // of a sidebar drag, but an unchanged cap skips re-rendering the owner.
     const measure = () => {
       setMaxWidth(getPreviewPanelMaxWidth(window.innerWidth, row?.clientWidth));
+      document
+        .querySelector<HTMLElement>("[data-workspace-right-tabs]")
+        ?.style.setProperty("--workspace-right-tabs-width", `${width}px`);
     };
     measure();
     let frame = 0;

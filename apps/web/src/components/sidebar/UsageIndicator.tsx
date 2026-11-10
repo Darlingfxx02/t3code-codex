@@ -3,6 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useQuietThreadShells } from "../../state/entities";
 import { environmentPresentations } from "../../state/presentation";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+import { Button } from "../ui/button";
 import { SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -65,7 +66,15 @@ function UsageRing({ subscriptions }: { readonly subscriptions: readonly UsageSu
   );
 }
 
-export function UsageIndicatorButton({ onClick }: { readonly onClick: () => void }) {
+export function UsageIndicatorButton({
+  onClick,
+  rail = false,
+  active = false,
+}: {
+  readonly onClick: () => void;
+  readonly rail?: boolean;
+  readonly active?: boolean;
+}) {
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const threads = useQuietThreadShells();
   const subscriptions = collectUsageSubscriptions(
@@ -78,14 +87,25 @@ export function UsageIndicatorButton({ onClick }: { readonly onClick: () => void
     threads,
   );
   const recent = recentUsageSubscriptions(subscriptions);
+  const button = rail ? (
+    <Button
+      aria-label="Usage"
+      className="size-9"
+      onClick={onClick}
+      size="icon"
+      variant={active ? "secondary" : "ghost"}
+    >
+      <UsageRing subscriptions={subscriptions} />
+    </Button>
+  ) : (
+    <SidebarMenuButton aria-label="Usage" isActive={active} onClick={onClick} size="icon">
+      <UsageRing subscriptions={subscriptions} />
+    </SidebarMenuButton>
+  );
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={<SidebarMenuButton aria-label="Usage" onClick={onClick} size="icon" />}
-      >
-        <UsageRing subscriptions={subscriptions} />
-      </TooltipTrigger>
-      <TooltipPopup side="top">
+      <TooltipTrigger render={button} />
+      <TooltipPopup side={rail ? "right" : "top"}>
         <div className="flex min-w-44 flex-col gap-2 py-1">
           <span className="font-medium">Usage</span>
           {recent.length > 0 ? (

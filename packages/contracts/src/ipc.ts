@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
+import {
+  PreviewDesignCapture,
+  PreviewDesignNodeSnapshot,
+  type PreviewDesignCapture as PreviewDesignCaptureType,
+  type PreviewDesignNodeSnapshot as PreviewDesignNodeSnapshotType,
+} from "./preview.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
 import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -755,6 +761,11 @@ export const DesktopPreviewScreenshotArtifactSchema: Schema.Codec<DesktopPreview
     createdAt: Schema.String,
   });
 
+export const DesktopPreviewDesignNodeSnapshotSchema = PreviewDesignNodeSnapshot;
+export type DesktopPreviewDesignNodeSnapshot = PreviewDesignNodeSnapshotType;
+export const DesktopPreviewDesignCaptureSchema = PreviewDesignCapture;
+export type DesktopPreviewDesignCapture = PreviewDesignCaptureType;
+
 export interface PickedElementStackFrame {
   functionName: string | null;
   fileName: string | null;
@@ -1187,6 +1198,7 @@ export interface DesktopPreviewBridge {
   captureScreenshot: (
     tabId: string,
   ) => Promise<DesktopPreviewScreenshotArtifact | PreviewCaptureFailureEncoded>;
+  captureDesignSnapshot: (tabId: string) => Promise<DesktopPreviewDesignCapture>;
   revealArtifact: (path: string) => Promise<void>;
   copyArtifactToClipboard: (path: string) => Promise<void>;
   pictureInPicture: {

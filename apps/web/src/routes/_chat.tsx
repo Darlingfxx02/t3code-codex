@@ -22,7 +22,7 @@ function ChatRouteLayout() {
   const modalOpen = useMatches({
     select: (matches) => matches.some((match) => isAppModalPage(match.pathname)),
   });
-  // Settings and Usage render over the thread that opened them, so ChatView never remounts.
+  // Usage renders over the thread that opened it, so ChatView never remounts.
   const [backgroundTarget, setBackgroundTarget] = useState(threadTarget);
   if (!modalOpen && threadRouteTargetKey(backgroundTarget) !== threadRouteTargetKey(threadTarget)) {
     setBackgroundTarget(threadTarget);

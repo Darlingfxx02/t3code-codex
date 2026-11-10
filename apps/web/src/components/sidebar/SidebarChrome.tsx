@@ -1,10 +1,14 @@
-import { ArrowLeftIcon, SettingsIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+  ArrowLeftIcon,
+  CalendarClockIcon,
+  HomeIcon,
+  ListTodoIcon,
+  SettingsIcon,
+} from "lucide-react";
 import { memo } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { cn } from "../../lib/utils";
-import { usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
 import {
   SidebarFooter,
@@ -13,18 +17,16 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
-import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
+import { isSettingsPage, isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
-import {
-  SidebarUpdateArchitectureWarning,
-  SidebarUpdatePill,
-} from "./SidebarUpdatePill";
-import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { SidebarUpdateArchitectureWarning } from "./SidebarUpdatePill";
 import { observeResize } from "~/lib/observeResize";
+import { usePullRequestsSupported } from "../../state/environments";
+import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { UsageIndicatorButton } from "./UsageIndicator";
+import { validateScheduledTasksSearch } from "../settings/scheduledTasksSettings.logic";
 
 export function SidebarBrandWidthProbe({
   isElectron,
@@ -35,8 +37,7 @@ export function SidebarBrandWidthProbe({
 }) {
   const observeWidth = (probe: HTMLDivElement) => {
     return observeResize(probe, ([entry]) => {
-      if (entry)
-        onWidthChange(entry.borderBoxSize[0]?.inlineSize ?? probe.offsetWidth);
+      if (entry) onWidthChange(entry.borderBoxSize[0]?.inlineSize ?? probe.offsetWidth);
     });
   };
 
@@ -48,9 +49,7 @@ export function SidebarBrandWidthProbe({
     >
       <div className="ml-[var(--workspace-titlebar-content-left)] flex gap-1">
         <SidebarBrandMark onBackdrop={false} />
-        {isElectron ? (
-          <div className="w-[calc(2*var(--workspace-titlebar-control-size))]" />
-        ) : null}
+        {isElectron ? <div className="w-[calc(2*var(--workspace-titlebar-control-size))]" /> : null}
       </div>
     </div>
   );
@@ -72,31 +71,6 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
-function SidebarUtilityItem({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <SidebarMenuItem className="shrink-0">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SidebarMenuButton aria-label={label} onClick={onClick} size="icon">
-              {icon}
-            </SidebarMenuButton>
-          }
-        />
-        <TooltipPopup side="top">{label}</TooltipPopup>
-      </Tooltip>
-    </SidebarMenuItem>
-  );
-}
-
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
@@ -104,66 +78,132 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const isOnUtilityPage = useLocation({
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
-  const pullRequestsSupported = usePullRequestsSupported();
+  const isOnSettingsPage = useLocation({
+    select: (location) => isSettingsPage(location.pathname),
+  });
+  const settingsReturn = useLocation({
+    select: (location) => {
+      if (!isSettingsPage(location.pathname) || typeof location.search !== "object") return null;
+      const search = validateScheduledTasksSearch(location.search as Record<string, unknown>);
+      if (search.returnTo !== "automations") return null;
+      return {
+        ...(search.returnEnvironmentId ? { environmentId: search.returnEnvironmentId } : {}),
+        ...(search.returnTaskId ? { taskId: search.returnTaskId } : {}),
+      };
+    },
+  });
   const closeMobileSidebar = () => {
     if (isMobile) {
       setOpenMobile(false);
     }
   };
-  const handlePullRequestsClick = () => {
-    closeMobileSidebar();
-    void navigate({
-      to: "/pull-requests",
-      search: readPullRequestListPreferences(),
-    });
-  };
-  const handleSettingsClick = () => {
-    closeMobileSidebar();
-    void navigate({ to: "/settings" });
-  };
-
-  const handleUsageClick = () => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
-    void navigate({ to: "/usage" });
-  };
-
   const handleBackClick = () => {
     closeMobileSidebar();
-    void navigateToMainApp();
+    if (settingsReturn !== null) {
+      void navigate({ to: "/automations", search: settingsReturn });
+    } else {
+      void navigateToMainApp();
+    }
   };
 
   return (
     <SidebarMenu className="flex-row items-center">
-      {isOnUtilityPage ? (
+      {isOnUtilityPage || isOnSettingsPage ? (
         <SidebarMenuItem className="min-w-0 flex-1">
           <SidebarMenuButton onClick={handleBackClick}>
             <ArrowLeftIcon />
             <span>Back</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-      ) : (
-        <>
-          <SidebarUtilityItem
-            icon={<SettingsIcon />}
-            label="Settings"
-            onClick={handleSettingsClick}
-          />
-          {pullRequestsSupported ? (
-            <SidebarUtilityItem
-              icon={<PullRequestGlyph.pullRequest />}
-              label="Pull requests"
-              onClick={handlePullRequestsClick}
-            />
-          ) : null}
-          <SidebarMenuItem className="shrink-0">
-            <UsageIndicatorButton onClick={handleUsageClick} />
-          </SidebarMenuItem>
-        </>
-      )}
+      ) : null}
       <SidebarThreadUndoNotice />
-      <SidebarUpdatePill />
+    </SidebarMenu>
+  );
+});
+
+const SidebarMobileNavigation = memo(function SidebarMobileNavigation() {
+  const navigate = useNavigate();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { setOpenMobile } = useSidebar();
+  const pullRequestsSupported = usePullRequestsSupported();
+  const close = () => setOpenMobile(false);
+  const itemClass = "min-w-0 flex-1";
+  const linkClass = "justify-center px-0";
+  return (
+    <SidebarMenu className="flex-row items-center md:hidden">
+      <SidebarMenuItem className={itemClass}>
+        <SidebarMenuButton
+          size="icon"
+          className={linkClass}
+          isActive={pathname === "/"}
+          tooltip="Home"
+          render={<Link to="/" aria-label="Home" onClick={close} />}
+        >
+          <HomeIcon />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem className={itemClass}>
+        <SidebarMenuButton
+          size="icon"
+          className={linkClass}
+          isActive={pathname === "/automations"}
+          tooltip="Automations"
+          render={<Link to="/automations" aria-label="Automations" onClick={close} />}
+        >
+          <CalendarClockIcon />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      {pullRequestsSupported ? (
+        <SidebarMenuItem className={itemClass}>
+          <SidebarMenuButton
+            size="icon"
+            className={linkClass}
+            isActive={pathname === "/pull-requests"}
+            tooltip="Pull requests"
+            render={
+              <Link
+                to="/pull-requests"
+                search={readPullRequestListPreferences()}
+                aria-label="Pull requests"
+                onClick={close}
+              />
+            }
+          >
+            <PullRequestGlyph.pullRequest />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
+      <SidebarMenuItem className={itemClass}>
+        <SidebarMenuButton
+          size="icon"
+          className={linkClass}
+          isActive={pathname === "/tasks"}
+          tooltip="Tasks"
+          render={<Link to="/tasks" aria-label="Tasks" onClick={close} />}
+        >
+          <ListTodoIcon />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem className={itemClass}>
+        <UsageIndicatorButton
+          onClick={() => {
+            close();
+            void navigate({ to: "/usage" });
+          }}
+          active={pathname === "/usage"}
+        />
+      </SidebarMenuItem>
+      <SidebarMenuItem className={itemClass}>
+        <SidebarMenuButton
+          size="icon"
+          className={linkClass}
+          isActive={pathname.startsWith("/settings")}
+          tooltip="Settings"
+          render={<Link to="/settings" aria-label="Settings" onClick={close} />}
+        >
+          <SettingsIcon />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
     </SidebarMenu>
   );
 });
@@ -173,6 +213,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     <SidebarFooter>
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
+      <SidebarMobileNavigation />
       <SidebarUtilityMenu />
     </SidebarFooter>
   );

@@ -7,7 +7,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
+import { useLocation, useNavigate, useRouter, type AnyRouter } from "@tanstack/react-router";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { SearchIcon } from "lucide-react";
 
 import { moveWorkspaceFocus, workspaceAreaProps } from "../lib/workspaceFocus";
@@ -26,7 +27,7 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { isMacPlatform } from "../lib/utils";
+import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import {
   PanelAnimationSuppressionProvider,
@@ -36,13 +37,23 @@ import {
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
 import ThreadSidebar from "./Sidebar";
-import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
+import { SidebarBrandWidthProbe, SidebarChromeFooter } from "./sidebar/SidebarChrome";
 import { WorkspaceIconRail } from "./sidebar/WorkspaceIconRail";
-import { isAppModalPage } from "./sidebar/mainAppLocation";
+import {
+  isAppModalPage,
+  isAutomationsPage,
+  isDesignPage,
+  isSettingsPage,
+  isTasksPage,
+  workspaceSidebarMode,
+} from "./sidebar/mainAppLocation";
+import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { Button } from "./ui/button";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
-import { useQuietThreadShell } from "../state/entities";
+import { useProject, useQuietThreadProjection, useQuietThreadShell } from "../state/entities";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { ProjectFavicon } from "./ProjectFavicon";
 import {
   clampThreadSidebarWidth,
   resolveInitialThreadSidebarWidth,
@@ -54,24 +65,68 @@ import {
 import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { registerCommands, registerMenuAction } from "../shortcuts/dispatcher";
-import { resolveThreadRouteRef } from "../threadRoutes";
+import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
 
 function WorkspaceGlobalChrome() {
+  const navigate = useNavigate();
+  const automationsPage = useLocation({
+    select: (location) => isAutomationsPage(location.pathname),
+  });
+  const designPage = useLocation({
+    select: (location) => isDesignPage(location.pathname),
+  });
+  const tasksPage = useLocation({
+    select: (location) => isTasksPage(location.pathname),
+  });
+  const chromeSidebarWidth =
+    automationsPage || tasksPage
+      ? "var(--automations-sidebar-width)"
+      : designPage
+        ? "var(--design-sidebar-width)"
+        : "var(--sidebar-width)";
   const target = useThreadRouteTarget();
   const threadRef = target?.kind === "server" ? target.threadRef : null;
-  const thread = useQuietThreadShell(threadRef);
-  const title = thread?.title.trim() || (target?.kind === "draft" ? "New thread" : "T3 Code");
+  const shell = useQuietThreadShell(threadRef);
+  // Settled threads have no shell; fall back to the open thread's projection, as ChatView does.
+  const projection = useQuietThreadProjection(shell === null ? threadRef : null);
+  const thread = shell ?? projection?.projection.thread ?? null;
+  const title = tasksPage
+    ? "Tasks"
+    : designPage
+      ? "Design"
+      : automationsPage
+        ? ""
+        : thread?.title.trim() || (target?.kind === "draft" ? "New thread" : "T3 Code");
+  const projectRef =
+    threadRef !== null && thread !== null
+      ? scopeProjectRef(threadRef.environmentId, thread.projectId)
+      : null;
+  const project = useProject(projectRef);
+  const parentRef =
+    threadRef !== null &&
+    thread?.lineage.relationshipToParent === "subagent" &&
+    thread.lineage.parentThreadId !== null
+      ? scopeThreadRef(threadRef.environmentId, thread.lineage.parentThreadId)
+      : null;
+  const parentTitle = useQuietThreadShell(parentRef)?.title ?? "Parent thread";
 
   return (
     <header
-      className="fixed top-0 right-0 z-30 flex h-(--workspace-topbar-height) items-center gap-2 px-5"
-      style={{ left: "var(--workspace-rail-width)" }}
+      className="fixed top-0 right-0 left-0 z-30 flex h-(--workspace-chrome-height) items-center gap-2 pe-5 ps-5 md:left-(--workspace-rail-width)"
+      style={{
+        paddingInlineStart:
+          "max(1.25rem, calc(var(--workspace-controls-left) - var(--workspace-rail-width)))",
+      }}
       data-workspace-global-chrome=""
     >
-      <div className="flex min-w-0 basis-(--sidebar-width) shrink-0 items-center gap-2">
-        <SidebarTrigger aria-label="Toggle main sidebar" className="size-7" />
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
+        {automationsPage || designPage || tasksPage ? (
+          <span aria-hidden className="size-7" />
+        ) : (
+          <SidebarTrigger aria-label="Toggle main sidebar" className="size-7" />
+        )}
         <Button
           variant="ghost-muted"
           size="icon-sm"
@@ -81,21 +136,70 @@ function WorkspaceGlobalChrome() {
           <SearchIcon aria-hidden className="size-4" />
         </Button>
       </div>
-      <div className="min-w-0 flex-1 truncate ps-3 pe-32 text-sm text-foreground/90">{title}</div>
+      <div
+        className={cn(
+          "absolute inset-y-0 flex min-w-0 items-center gap-2.5 ps-2 pe-32 text-sm",
+          automationsPage && "max-md:!left-24 max-md:pe-3",
+        )}
+        style={{
+          left: `calc(0.25rem + 1px + ${chromeSidebarWidth})`,
+          right: "0px",
+        }}
+      >
+        {project ? <ProjectFavicon project={project} className="size-4 shrink-0" /> : null}
+        {parentRef ? (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Open parent thread: ${parentTitle}`}
+                    onClick={() => {
+                      void navigate({
+                        to: "/$environmentId/$threadId",
+                        params: buildThreadRouteParams(parentRef),
+                      });
+                    }}
+                    className="min-w-0 max-w-[45%] shrink cursor-pointer truncate rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  />
+                }
+              >
+                {parentTitle}
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">{parentTitle}</TooltipPopup>
+            </Tooltip>
+            <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
+          </>
+        ) : null}
+        <div
+          className={designPage ? "sr-only" : "min-w-0 flex-1 truncate text-foreground/90"}
+          {...(automationsPage ? { "data-automation-chrome-title": "" } : {})}
+        >
+          {title}
+        </div>
+      </div>
       <span
         aria-hidden
-        className="pointer-events-none fixed z-40 w-px bg-border/60"
+        className="pointer-events-none fixed z-40 hidden w-px bg-border/60 md:block"
         style={{
-          left: "calc(var(--workspace-rail-width) + 0.25rem + 1px + var(--sidebar-width))",
-          top: "0.375rem",
-          height: "calc(var(--workspace-topbar-height) - 0.75rem)",
+          left: `calc(var(--workspace-rail-width) + 0.25rem + 1px + ${chromeSidebarWidth})`,
+          top: "0.5rem",
+          height: "calc(var(--workspace-chrome-height) - 1rem)",
         }}
       />
       <div
-        className="pointer-events-none fixed top-0 z-40 flex h-(--workspace-topbar-height) justify-end"
-        style={{ right: "calc(0.25rem + 1px)" }}
+        className="pointer-events-none fixed top-0 z-40 flex h-(--workspace-chrome-height) items-center justify-end"
+        style={{ right: "calc(var(--workspace-shell-inset) + 1px)" }}
         data-workspace-right-tabs=""
       />
+      {designPage ? (
+        <div
+          className="pointer-events-auto absolute inset-y-0 right-5 z-40 flex min-w-0 items-center ps-2 text-sm"
+          style={{ left: `calc(0.25rem + 1px + ${chromeSidebarWidth})` }}
+          data-design-chrome-actions=""
+        />
+      ) : null}
     </header>
   );
 }
@@ -259,14 +363,23 @@ const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "Shift"]);
 // hold must survive whatever that re-renders.
 let heldUndoKey: string | null = null;
 
-// Undoes the thread actions in the sidebar's notice. Settings and Usage own
-// mod+z while open. Captured so mod+z reaches it before the composer's own
-// undo handler consumes the key.
+// Undoes the thread actions in the sidebar's notice. Settings, Automations and
+// Usage own mod+z while open. Captured so mod+z reaches it before the composer's
+// own undo handler consumes the key.
 function registerThreadUndoCommands(
   router: AnyRouter,
   readSidebarVisible: () => boolean,
 ): () => void {
-  const threadSidebarShown = () => !isAppModalPage(router.state.location.pathname);
+  const threadSidebarShown = () => {
+    const pathname = router.state.location.pathname;
+    return (
+      !isAppModalPage(pathname) &&
+      !isSettingsPage(pathname) &&
+      !isAutomationsPage(pathname) &&
+      !isDesignPage(pathname) &&
+      !isTasksPage(pathname)
+    );
+  };
   const unregister = registerCommands(
     {},
     {
@@ -348,12 +461,22 @@ function registerAppShellCommands(router: AnyRouter, shellElement: Element): () 
 function SidebarControl() {
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
+  const automationsPage = useLocation({
+    select: (location) => isAutomationsPage(location.pathname),
+  });
+  const designPage = useLocation({
+    select: (location) => isDesignPage(location.pathname),
+  });
+  const tasksPage = useLocation({
+    select: (location) => isTasksPage(location.pathname),
+  });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar } = useSidebar();
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window keydown listener that toggles the sidebar on its shortcut
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (automationsPage || designPage || tasksPage) return;
       if (event.defaultPrevented) return;
       if (
         event.target instanceof HTMLElement &&
@@ -383,13 +506,14 @@ function SidebarControl() {
 
     window.addEventListener("keydown", onKeyDown, true);
     const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
-      if (action === "sidebar.toggle") toggleSidebar();
+      if (action === "sidebar.toggle" && !automationsPage && !designPage && !tasksPage)
+        toggleSidebar();
     });
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       unsubscribe?.();
     };
-  }, [keybindings, toggleSidebar, usagePageOpen]);
+  }, [automationsPage, designPage, tasksPage, keybindings, toggleSidebar, usagePageOpen]);
 
   // The control lives as long as the shell, so it carries the shell's commands. Created
   // once so re-renders never re-register them.
@@ -402,7 +526,6 @@ function SidebarControl() {
 }
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
-  const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
     pendingKey: null,
@@ -410,6 +533,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const pathname = useLocation({ select: (location) => location.pathname });
+  const sidebarMode = workspaceSidebarMode(pathname);
+  const settingsPage = sidebarMode === "settings";
+  const automationsPage = sidebarMode === "automations";
+  const designPage = sidebarMode === "design";
+  const tasksPage = sidebarMode === "tasks";
+  const sidebarArea =
+    settingsPage || automationsPage || designPage || tasksPage
+      ? {}
+      : workspaceAreaProps("sidebar", 0, "Threads");
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
@@ -447,10 +579,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <div className="relative h-dvh min-h-0 overflow-hidden bg-background" data-workspace-stage="">
         <WorkspaceIconRail />
         <div
-          className="relative z-10 ms-1 me-1 overflow-hidden rounded-2xl border border-sidebar-border/70 md:ms-[calc(var(--workspace-rail-width)+0.25rem)]"
+          className="relative ms-(--workspace-shell-inset) me-(--workspace-shell-inset) overflow-hidden rounded-2xl border border-sidebar-border/70 md:ms-[calc(var(--workspace-rail-width)+var(--workspace-shell-inset))]"
           style={{
-            marginTop: "calc(var(--workspace-topbar-height) + 0.25rem)",
-            height: "calc(100% - var(--workspace-topbar-height) - 0.5rem)",
+            marginTop: "var(--workspace-chrome-height)",
+            height: "calc(100% - var(--workspace-chrome-height) - var(--workspace-shell-inset))",
           }}
           data-workspace-shell=""
         >
@@ -461,27 +593,37 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             style={sidebarProviderStyle}
           >
             <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
-            <Sidebar
-              side="left"
-              collapsible="offcanvas"
-              data-app-sidebar=""
-              {...sidebarArea}
-              role="navigation"
-              aria-label="Threads"
-              resizable={{
-                maxWidth: sidebarMaximumWidth,
-                minWidth: sidebarMinimumWidth,
-                shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-                  nextWidth <= currentWidth ||
-                  wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-                storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-                onResize: setSidebarWidth,
-              }}
-              style={windowControlsInsetStyle}
-            >
-              <ThreadSidebar routeReveal={sidebarRouteReveal} />
-              <SidebarRail onDoubleClick={resetSidebarWidth} />
-            </Sidebar>
+            {automationsPage || designPage || tasksPage ? null : (
+              <Sidebar
+                side="left"
+                collapsible="offcanvas"
+                data-app-sidebar=""
+                {...sidebarArea}
+                role={settingsPage ? "presentation" : "navigation"}
+                aria-label={settingsPage ? undefined : "Threads"}
+                resizable={{
+                  maxWidth: sidebarMaximumWidth,
+                  minWidth: sidebarMinimumWidth,
+                  shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+                    nextWidth <= currentWidth ||
+                    wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+                  storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+                  onResize: setSidebarWidth,
+                }}
+                style={windowControlsInsetStyle}
+              >
+                {settingsPage ? (
+                  <>
+                    <SettingsSidebarNav pathname={pathname} />
+                    <SidebarChromeFooter />
+                  </>
+                ) : (
+                  <ThreadSidebar routeReveal={sidebarRouteReveal} />
+                )}
+                <SidebarRail onDoubleClick={resetSidebarWidth} />
+                <SidebarRail titlebar />
+              </Sidebar>
+            )}
             {children}
             <BackgroundThreadAnnouncer />
             <SidebarControl />

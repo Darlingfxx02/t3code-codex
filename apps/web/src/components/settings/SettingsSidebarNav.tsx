@@ -257,7 +257,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       {...navArea}
       role="navigation"
       className={cn(
-        "flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14",
+        "flex min-h-0 min-w-0 w-full flex-1 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14",
         compactSearchOpen &&
           "max-md:absolute max-md:inset-y-0 max-md:start-0 max-md:z-10 max-md:w-full",
       )}
@@ -414,6 +414,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                                 aria-selected={isActive}
                                 aria-current={isActive ? "page" : undefined}
                                 isActive={isActive}
+                                variant={isActive ? "outline" : "default"}
                                 onClick={() => handleSectionClick(to)}
                               >
                                 <Icon />

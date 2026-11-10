@@ -3331,9 +3331,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       });
     }
     const wasPristine =
-      session.inputCount === 0 &&
-      !session.hasPersistedHistory &&
-      !session.hasRunningSubprocess;
+      session.inputCount === 0 && !session.hasPersistedHistory && !session.hasRunningSubprocess;
     yield* Effect.try({
       try: () => process.write(input.data),
       catch: (cause) =>

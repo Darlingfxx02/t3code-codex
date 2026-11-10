@@ -253,7 +253,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
       rows: [
         serverPage("SettingsProviderAccounts", "person.crop.circle", "Providers"),
         serverPage("SettingsThreads", "text.bubble", "Threads"),
-        page("SettingsScheduledTasks", "clock", "Scheduled tasks"),
+        page("SettingsScheduledTasks", "clock", "Automations"),
       ],
     },
     {

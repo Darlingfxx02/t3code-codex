@@ -6,6 +6,7 @@ import {
   EnvironmentId,
   FILL_PREVIEW_VIEWPORT,
   ThreadId,
+  type DesktopPreviewDesignCapture,
 } from "@t3tools/contracts";
 import { type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -16,28 +17,61 @@ import { act, render } from "../../../test/render";
 
 import type { PreviewableServer } from "./useDiscoveredLocalServers";
 
-const mocks = vi.hoisted(() => ({
-  navigate: vi.fn(async (_tabId: string, _url: string): Promise<void> => undefined),
-  rememberPreviewUrl: vi.fn(),
-  readPreparedConnection: vi.fn(() => ({ httpBaseUrl: "http://172.25.85.75:3773" })),
-  readEnvironmentScope: vi.fn((_environmentId?: unknown, _scope?: unknown) => true),
-  setAnnotationSendEnabled: vi.fn(async (_tabId: string, _enabled: boolean): Promise<void> => {}),
-  cancelPickElement: vi.fn(async (_tabId: string) => undefined),
-  openPictureInPicture: vi.fn(async (_tabId: string): Promise<void> => undefined),
-  closePictureInPicture: vi.fn(async (_tabId: string): Promise<void> => undefined),
-  pickElement: vi.fn(),
-  addPreviewAnnotation: vi.fn(),
-  addImage: vi.fn(),
-  pictureInPicture: false,
-  showEmptyState: false,
-  loading: false,
-  nativeServerTab: false,
-  serverEpoch: null as string | null,
-  servers: [] as PreviewableServer[],
-  recordingTabIds: new Set<string>(),
-  recordingRuntimeTabId: null as string | null,
-  recordVisitForThread: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const capture: DesktopPreviewDesignCapture = {
+    url: "https://example.com/dashboard",
+    title: "Dashboard",
+    viewportWidth: 800,
+    viewportHeight: 600,
+    nodes: [
+      {
+        nodeId: "main",
+        parentId: null,
+        kind: "group" as const,
+        name: "main",
+        text: null,
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600,
+        fill: "rgb(255, 255, 255)",
+        border: null,
+        fontFamily: "Inter",
+        fontSize: 16,
+        fontWeight: 400,
+        lineHeight: 20,
+        letterSpacing: 0,
+        color: "rgb(17, 24, 39)",
+        opacity: 1,
+        borderRadius: 0,
+      },
+    ],
+  };
+  return {
+    navigate: vi.fn(async (_tabId: string, _url: string): Promise<void> => undefined),
+    rememberPreviewUrl: vi.fn(),
+    readPreparedConnection: vi.fn(() => ({ httpBaseUrl: "http://172.25.85.75:3773" })),
+    readEnvironmentScope: vi.fn((_environmentId?: unknown, _scope?: unknown) => true),
+    setAnnotationSendEnabled: vi.fn(async (_tabId: string, _enabled: boolean): Promise<void> => {}),
+    cancelPickElement: vi.fn(async (_tabId: string) => undefined),
+    openPictureInPicture: vi.fn(async (_tabId: string): Promise<void> => undefined),
+    closePictureInPicture: vi.fn(async (_tabId: string): Promise<void> => undefined),
+    pickElement: vi.fn(),
+    captureDesignSnapshot: vi.fn(async (): Promise<DesktopPreviewDesignCapture> => capture),
+    defaultDesignCapture: capture,
+    addPreviewAnnotation: vi.fn(),
+    addImage: vi.fn(),
+    pictureInPicture: false,
+    showEmptyState: false,
+    loading: false,
+    nativeServerTab: false,
+    serverEpoch: null as string | null,
+    servers: [] as PreviewableServer[],
+    recordingTabIds: new Set<string>(),
+    recordingRuntimeTabId: null as string | null,
+    recordVisitForThread: vi.fn(),
+  };
+});
 
 const STUB_BROWSER_DEFAULTS = {
   viewport: FILL_PREVIEW_VIEWPORT,
@@ -54,6 +88,7 @@ vi.mock(import("./previewBridge"), async (original) => ({
   previewBridge: {
     navigate: mocks.navigate,
     pickElement: mocks.pickElement,
+    captureDesignSnapshot: mocks.captureDesignSnapshot,
     setAnnotationSendEnabled: mocks.setAnnotationSendEnabled,
     cancelPickElement: mocks.cancelPickElement,
     refresh: vi.fn(async () => undefined),
@@ -158,6 +193,7 @@ import { usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { dispatchPreviewAction } from "./previewActionBus";
 import { PreviewView } from "./PreviewView";
 import { ToastProvider } from "~/components/ui/toast";
+import { resetDesignStorage, storedDesignDocuments } from "../../../test/designStorage";
 
 const TEST_THREAD_REF = {
   environmentId: EnvironmentId.make("environment-1"),
@@ -195,6 +231,7 @@ function annotation(id: string, screenshot: unknown = null) {
 // resetting them.
 function setup() {
   vi.clearAllMocks();
+  mocks.captureDesignSnapshot.mockReset().mockResolvedValue(mocks.defaultDesignCapture);
   mocks.readEnvironmentScope.mockReset().mockReturnValue(true);
   mocks.setAnnotationSendEnabled.mockReset().mockResolvedValue(undefined);
   mocks.pickElement.mockReset();
@@ -215,6 +252,75 @@ function setup() {
 }
 
 describe("PreviewView", () => {
+  it("opens a successful preview as a local Design snapshot", async () => {
+    setup();
+    await resetDesignStorage();
+    const before = await storedDesignDocuments();
+    await using screen = await render(<ToastProvider timeout={0}>{view()}</ToastProvider>, {
+      router: "/",
+    });
+
+    mocks.captureDesignSnapshot.mockRejectedValueOnce(new Error("Capture unavailable"));
+    await userEvent.click(page.getByRole("button", { name: "Open in Canvas" }));
+    await expect
+      .element(page.getByText("Could not import the preview", { exact: true }))
+      .toBeVisible();
+    expect(screen.router!.state.location.pathname).toBe("/");
+    expect(await storedDesignDocuments()).toEqual(before);
+    const captured = mocks.defaultDesignCapture;
+    const image = {
+      ...captured.nodes[0]!,
+      nodeId: "image",
+      parentId: "main",
+      kind: "image" as const,
+      name: "Photo",
+      width: 80,
+      height: 40,
+      assetUrl: "data:image/png;base64,YnJva2Vu",
+    };
+    mocks.captureDesignSnapshot.mockResolvedValueOnce({
+      ...captured,
+      nodes: [...captured.nodes, image],
+    });
+    await userEvent.click(page.getByRole("button", { name: "Open in Canvas" }));
+    await expect
+      .element(
+        page.getByText("The captured images could not be saved. Try again.", { exact: true }),
+      )
+      .toBeVisible();
+    expect(screen.router!.state.location.pathname).toBe("/");
+    expect(await storedDesignDocuments()).toEqual(before);
+    const assetUrl = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="red"/></svg>')}`;
+    mocks.captureDesignSnapshot.mockResolvedValueOnce({
+      ...captured,
+      nodes: [...captured.nodes, { ...image, assetUrl }],
+    });
+
+    await userEvent.click(page.getByRole("button", { name: "Open in Canvas" }));
+    await vi.waitFor(() => expect(screen.router!.state.location.pathname).toBe("/design"));
+    const imported = (await storedDesignDocuments()).find(
+      (document) => document.documentId === screen.router!.state.location.search.documentId,
+    );
+    expect(await storedDesignDocuments()).toHaveLength(before.length + 1);
+    expect(
+      (await storedDesignDocuments()).find(
+        (document) => document.documentId === before[0]!.documentId,
+      ),
+    ).toEqual(before[0]);
+    expect(imported?.provenance?.route).toContain("example.com");
+    expect(imported?.nodes[0]?.name).toBe("Preview frame");
+    expect(imported?.assets).toHaveLength(1);
+    expect(imported?.assets[0]).toMatchObject({ width: 80, height: 40 });
+    expect(imported?.nodes.find((node) => node.kind === "image")?.assetId).toBe(
+      imported?.assets[0]?.assetId,
+    );
+    await userEvent.click(page.getByRole("button", { name: "Open in Canvas" }));
+    await vi.waitFor(async () =>
+      expect(await storedDesignDocuments()).toHaveLength(before.length + 2),
+    );
+    expect(screen.router!.state.location.search.documentId).not.toBe(imported!.documentId);
+  });
+
   it.each(["mailto:alice@example.com", "http://"])(
     "reports rejected address %s without navigating or recording it",
     async (address) => {

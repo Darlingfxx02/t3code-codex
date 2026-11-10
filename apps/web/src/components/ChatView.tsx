@@ -3475,6 +3475,29 @@ export default function ChatView(props: ChatViewProps) {
       showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
     />
   );
+  const panelTabbarControls = (
+    <PanelLayoutControls
+      {...panelToggleControlProps}
+      showThreadPanelControl={false}
+      showTerminalControl={false}
+    />
+  );
+  const inlineChatPanelControls = inlineRightPanelOwnsTitleBar ? (
+    <div
+      className="absolute end-2 top-0 z-50 flex h-(--workspace-topbar-height) items-center gap-1 [-webkit-app-region:no-drag]"
+      data-chat-panel-controls
+    >
+      <RightPanelMaximizeControl
+        maximized={rightPanelMaximized}
+        onToggle={toggleRightPanelMaximizedStable}
+      />
+      <PanelLayoutControls
+        {...panelToggleControlProps}
+        showThreadPanelControl={false}
+        showRightPanelControl={false}
+      />
+    </div>
+  ) : null;
   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
   const panelLayoutControls = (
     <WorkspaceTitlebarControls
@@ -3508,13 +3531,14 @@ export default function ChatView(props: ChatViewProps) {
       {!embedded && !rightPanelOpen ? panelLayoutControls : null}
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
+          "relative flex min-h-0 min-w-0 flex-col overflow-x-hidden",
           rightPanelMaximized ? "w-0 flex-none" : "flex-1",
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
         inert={rightPanelMaximized}
       >
+        {inlineChatPanelControls}
         {embedded ? null : (
           <header
             ref={threadPanelPopoverAnchorRef}
@@ -3996,13 +4020,7 @@ export default function ChatView(props: ChatViewProps) {
           maximized={rightPanelMaximized}
           layoutControls={
             rightPanelOpen ? (
-              <div className="mr-px flex items-center gap-1">
-                <RightPanelMaximizeControl
-                  maximized={rightPanelMaximized}
-                  onToggle={toggleRightPanelMaximizedStable}
-                />
-                {panelToggleControls}
-              </div>
+              <div className="mr-px flex items-center gap-1">{panelTabbarControls}</div>
             ) : null
           }
           surfaces={renderedRightPanelSurfaces}

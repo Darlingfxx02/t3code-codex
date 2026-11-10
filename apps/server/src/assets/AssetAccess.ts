@@ -31,6 +31,7 @@ import {
   type ImageDimensions,
 } from "@t3tools/shared/imageDimensions";
 import { MCP_APP_MAX_HTML_BYTES } from "@t3tools/shared/mcpApp";
+import { HTML_RENDER_MAX_HTML_BYTES } from "@t3tools/shared/htmlRender";
 import {
   isProjectFaviconPath,
   PROJECT_FAVICON_FALLBACK_MARKER,
@@ -139,7 +140,7 @@ const AssetClaimsSchema = Schema.Union([
     download: Schema.optionalKey(Schema.Boolean),
     fileName: Schema.optionalKey(Schema.String),
     mimeType: Schema.optionalKey(Schema.String),
-    renderIntent: Schema.optionalKey(Schema.Literal("mcp-app")),
+    renderIntent: Schema.optionalKey(Schema.Literals(["mcp-app", "html-render"])),
     expiresAt: Schema.Number,
   }),
   Schema.Struct({
@@ -192,7 +193,7 @@ export type ResolvedAsset =
       readonly fileName?: string;
       readonly mimeType?: string;
       readonly file?: OpenMediaFile;
-      readonly renderIntent?: "mcp-app";
+      readonly renderIntent?: "mcp-app" | "html-render";
     }
   | {
       readonly kind: "bytes";
@@ -222,10 +223,14 @@ function decodeRelativePath(value: string): string | null {
   }
 }
 
-export const readMcpAppHtml = Effect.fn("AssetAccess.readMcpAppHtml")(function* (filePath: string) {
+export const readPreviewHtml = Effect.fn("AssetAccess.readMcpAppHtml")(function* (
+  filePath: string,
+  renderIntent: "mcp-app" | "html-render" = "mcp-app",
+) {
   const fileSystem = yield* FileSystem.FileSystem;
   // Allow space for stored CSP tags, but bound reads if the attachment grows after minting.
-  const limit = MCP_APP_MAX_HTML_BYTES + 128 * 1024;
+  const limit =
+    (renderIntent === "mcp-app" ? MCP_APP_MAX_HTML_BYTES : HTML_RENDER_MAX_HTML_BYTES) + 128 * 1024;
   const chunks = yield* Stream.runCollect(fileSystem.stream(filePath, { bytesToRead: limit + 1 }));
   const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
   if (size > limit) return null;
@@ -682,8 +687,8 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
           : input.resource.mimeType !== undefined
             ? { mimeType: isVideo ? videoMimeType : input.resource.mimeType }
             : {}),
-        ...(input.resource.renderIntent === "mcp-app" && inlinePreviewMimeType === "text/html"
-          ? { renderIntent: "mcp-app" as const }
+        ...(input.resource.renderIntent !== undefined && inlinePreviewMimeType === "text/html"
+          ? { renderIntent: input.resource.renderIntent }
           : {}),
         expiresAt,
       };
@@ -927,7 +932,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
           ...(claims.download ? { download: true } : {}),
           ...(claims.fileName !== undefined ? { fileName: claims.fileName } : {}),
           ...(claims.mimeType !== undefined ? { mimeType: claims.mimeType } : {}),
-          ...(claims.renderIntent === "mcp-app" ? { renderIntent: "mcp-app" as const } : {}),
+          ...(claims.renderIntent !== undefined ? { renderIntent: claims.renderIntent } : {}),
         } satisfies ResolvedAsset)
       : null;
   }

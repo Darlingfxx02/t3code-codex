@@ -1348,7 +1348,13 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         externalTabbar && "pointer-events-auto",
       )}
-      style={externalTabbar ? { width: `${props.inlineSize?.width ?? 0}px` } : undefined}
+      style={
+        externalTabbar
+          ? {
+              width: `var(--workspace-right-tabs-width, ${props.inlineSize?.width ?? 0}px)`,
+            }
+          : undefined
+      }
       data-right-panel-tabbar
     >
       {externalTabbar ? (

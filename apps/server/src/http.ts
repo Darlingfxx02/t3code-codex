@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { isDevProxiedPath } from "@t3tools/shared/devProxy";
 import { injectMcpAppCookieBootstrap, injectMcpAppThemeBootstrap } from "@t3tools/shared/mcpApp";
+import { refreshHtmlRenderBootstrap } from "@t3tools/shared/htmlRender";
 import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
 import * as ByteSize from "effect/ByteSize";
 import * as Data from "effect/Data";
@@ -30,7 +31,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import { OtlpTracer, OtlpSerialization } from "effect/observability";
 
 import * as ServerConfig from "./config.ts";
-import { ASSET_ROUTE_PREFIX, readMcpAppHtml, resolveAsset } from "./assets/AssetAccess.ts";
+import { ASSET_ROUTE_PREFIX, readPreviewHtml, resolveAsset } from "./assets/AssetAccess.ts";
 import { sourceControlMediaResponse } from "./assets/sourceControlMediaResponse.ts";
 import { statMediaFile, streamMediaFile, type OpenMediaFile } from "./assets/MediaFile.ts";
 import {
@@ -166,7 +167,7 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
     readonly fileName?: string;
     readonly mimeType?: string;
     readonly file?: OpenMediaFile;
-    readonly renderIntent?: "mcp-app";
+    readonly renderIntent?: "mcp-app" | "html-render";
   },
   rangeHeader?: string,
   ifRangeHeader?: string,
@@ -174,18 +175,20 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
 ) {
   const headers = assetResponseHeaders(asset.path, asset);
   if (
-    asset.renderIntent === "mcp-app" &&
+    asset.renderIntent !== undefined &&
     !asset.download &&
     headers["Content-Type"] === "text/html; charset=utf-8"
   ) {
-    const bytes = yield* readMcpAppHtml(asset.path);
+    const bytes = yield* readPreviewHtml(asset.path, asset.renderIntent);
     if (bytes === null) {
-      return HttpServerResponse.text("MCP app is too large to preview.", { status: 413 });
+      return HttpServerResponse.text("HTML is too large to preview.", { status: 413 });
     }
     const body = pipe(
       new TextDecoder().decode(bytes),
-      injectMcpAppThemeBootstrap,
-      injectMcpAppCookieBootstrap,
+      (html) =>
+        asset.renderIntent === "html-render"
+          ? refreshHtmlRenderBootstrap(html)
+          : injectMcpAppCookieBootstrap(injectMcpAppThemeBootstrap(html)),
       (html) => new TextEncoder().encode(html),
     );
     headers["Content-Length"] = String(body.byteLength);

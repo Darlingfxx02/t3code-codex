@@ -9,6 +9,8 @@
 - [Terminal history](./user/terminal.md)
 - [Source control](./user/source-control.md)
 - [Project settings](./user/project-settings.md)
+- [Design files](./user/design-workspace.md)
+- [Task workspace](./user/task-workspace.md)
 - [Appearance and themes](./user/appearance.md)
 - [Keyboard shortcuts](./user/keybindings.md)
 - [SnapShots](./user/snap-shot.md)

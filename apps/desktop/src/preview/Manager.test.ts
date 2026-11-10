@@ -1431,6 +1431,69 @@ describe("PreviewManager", () => {
     ),
   );
 
+  effectIt.effect("captures a dependency-free design tree from the current preview DOM", () =>
+    withManager((manager) =>
+      Effect.gen(function* () {
+        const capturePage = vi.fn(async () => ({
+          toJPEG: () => Buffer.from("unused"),
+          getSize: () => ({ width: 800, height: 600 }),
+        }));
+        const contents = makeTestPreviewWebContents(capturePage);
+        const executeJavaScript = contents.executeJavaScript as unknown as ReturnType<typeof vi.fn>;
+        executeJavaScript.mockResolvedValue({
+          url: "https://example.com/dashboard",
+          title: "Dashboard",
+          viewportWidth: 800,
+          viewportHeight: 600,
+          nodes: [
+            {
+              nodeId: "0",
+              parentId: null,
+              kind: "group",
+              name: "main",
+              text: null,
+              x: 0,
+              y: 0,
+              width: 800,
+              height: 600,
+              fill: null,
+              border: null,
+              fontFamily: "Inter",
+              fontSize: 16,
+              fontWeight: 400,
+              fontStyle: "italic",
+              textDecorationLine: "underline line-through",
+              textTransform: "uppercase",
+              textWrapStyle: "balance",
+              lineHeight: 20,
+              letterSpacing: 0,
+              color: "rgb(0, 0, 0)",
+              boxShadow: "rgb(0, 0, 0) 0px 4px 8px 0px",
+              filter: "blur(2px)",
+              opacity: 1,
+              borderRadius: 0,
+            },
+          ],
+        });
+        fromId.mockReturnValue(contents);
+        yield* manager.createTab("tab_design");
+        yield* manager.registerWebview("tab_design", 42);
+        const capture = yield* manager.captureDesignSnapshot("tab_design");
+        expect(capture.title).toBe("Dashboard");
+        expect(capture.nodes).toHaveLength(1);
+        expect(capture.nodes[0]).toMatchObject({
+          fontStyle: "italic",
+          textDecorationLine: "underline line-through",
+          textTransform: "uppercase",
+          textWrapStyle: "balance",
+          boxShadow: "rgb(0, 0, 0) 0px 4px 8px 0px",
+          filter: "blur(2px)",
+        });
+        expect(contents.executeJavaScript).toHaveBeenCalledOnce();
+      }),
+    ),
+  );
+
   effectIt.effect("keeps every recorded guest unthrottled until its frame capture stops", () =>
     withManager((manager) =>
       Effect.gen(function* () {

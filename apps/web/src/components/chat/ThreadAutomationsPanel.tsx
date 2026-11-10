@@ -16,7 +16,8 @@ import {
 
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { cn } from "../../lib/utils";
-import { ScheduledRelativeLabel, scheduleLabel } from "../settings/ScheduledTasksSettings";
+import { ScheduledRelativeLabel } from "../scheduledTaskPresentation";
+import { scheduleLabel } from "../settings/scheduledTasksSettings.logic";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -80,6 +81,19 @@ export function ThreadAutomationsPanel(props: {
     (task) => task.threadId === props.threadId,
   );
 
+  if (tasksQuery.data === null && tasksQuery.isPending) {
+    return (
+      <ThreadDetailsSection
+        headingId="thread-details-automations-heading"
+        title="Automations"
+        data-thread-automations-panel
+      >
+        <p className="px-2.5 py-1.5 text-2xs text-muted-foreground" role="status">
+          Loading automations…
+        </p>
+      </ThreadDetailsSection>
+    );
+  }
   if (tasksQuery.error === null && boundTasks.length === 0) return null;
 
   const reportFailure = (title: string, error: unknown) => {
@@ -95,6 +109,7 @@ export function ThreadAutomationsPanel(props: {
   const toggleEnabled = async (task: ScheduledTask, enabled: boolean) => {
     if (
       busyTaskId !== null ||
+      !canOperate ||
       !readEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope)
     )
       return;
@@ -112,6 +127,9 @@ export function ThreadAutomationsPanel(props: {
   const runNow = async (task: ScheduledTask) => {
     if (
       busyTaskId !== null ||
+      !canOperate ||
+      task.blockedByPolicy !== undefined ||
+      task.lastRunStatus === "running" ||
       !readEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope)
     )
       return;
@@ -139,11 +157,14 @@ export function ThreadAutomationsPanel(props: {
                 size="icon-xs"
                 variant="ghost"
                 part="icon"
-                aria-label="Manage scheduled tasks"
+                aria-label="Manage automations"
                 onClick={() =>
                   void navigate({
-                    to: "/settings/scheduled-tasks",
-                    search: { environmentId: props.environmentId },
+                    to: "/automations",
+                    search: {
+                      environmentId: props.environmentId,
+                      ...(boundTasks.length === 1 ? { taskId: boundTasks[0]!.id } : {}),
+                    },
                   })
                 }
               >
@@ -151,7 +172,7 @@ export function ThreadAutomationsPanel(props: {
               </ThreadDetailsControl>
             }
           />
-          <TooltipPopup>Manage scheduled tasks</TooltipPopup>
+          <TooltipPopup>Manage automations</TooltipPopup>
         </Tooltip>
       }
     >
@@ -194,10 +215,17 @@ export function ThreadAutomationsPanel(props: {
                     variant="ghost"
                     part="icon"
                     aria-label={`Edit ${task.title}`}
+                    disabled={!canOperate || busyTaskId !== null}
                     onClick={() =>
                       void navigate({
                         to: "/settings/scheduled-tasks",
-                        search: { environmentId: props.environmentId, taskId: task.id },
+                        search: {
+                          environmentId: props.environmentId,
+                          taskId: task.id,
+                          returnTo: "automations",
+                          returnEnvironmentId: props.environmentId,
+                          returnTaskId: task.id,
+                        },
                       })
                     }
                   >
@@ -205,7 +233,13 @@ export function ThreadAutomationsPanel(props: {
                   </ThreadDetailsControl>
                 }
               />
-              <TooltipPopup>Edit automation</TooltipPopup>
+              <TooltipPopup>
+                {!canOperate
+                  ? "You do not have permission to edit automations."
+                  : busyTaskId !== null
+                    ? "Another automation action is in progress."
+                    : "Edit automation"}
+              </TooltipPopup>
             </Tooltip>
             {/* Webhook tasks need a request from their URL. */}
             {task.schedule.type === "webhook" ? null : (
@@ -218,7 +252,10 @@ export function ThreadAutomationsPanel(props: {
                       part="icon"
                       aria-label={`Run ${task.title} now`}
                       disabled={
-                        !canOperate || busyTaskId !== null || task.lastRunStatus === "running"
+                        !canOperate ||
+                        busyTaskId !== null ||
+                        task.blockedByPolicy !== undefined ||
+                        task.lastRunStatus === "running"
                       }
                       onClick={() => void runNow(task)}
                     >
@@ -226,13 +263,23 @@ export function ThreadAutomationsPanel(props: {
                     </ThreadDetailsControl>
                   }
                 />
-                <TooltipPopup>Run now</TooltipPopup>
+                <TooltipPopup>
+                  {!canOperate
+                    ? "You do not have permission to run automations."
+                    : task.blockedByPolicy !== undefined
+                      ? `Blocked by policy: ${task.blockedByPolicy}`
+                      : task.lastRunStatus === "running"
+                        ? "This automation is already running."
+                        : busyTaskId !== null
+                          ? "Another automation action is in progress."
+                          : "Run now"}
+                </TooltipPopup>
               </Tooltip>
             )}
             <Switch
               checked={task.enabled}
               disabled={!canOperate || busyTaskId !== null}
-              aria-label={task.enabled ? `Pause ${task.title}` : `Resume ${task.title}`}
+              aria-label={`Toggle ${task.title} automation`}
               onCheckedChange={(enabled) => void toggleEnabled(task, enabled)}
             />
           </li>

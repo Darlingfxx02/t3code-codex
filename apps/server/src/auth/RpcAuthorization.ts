@@ -112,6 +112,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverSignalProcess]: AuthEnvironmentMaintainScope,
   [WS_METHODS.serverReportClientActivity]: AuthOrchestrationReadScope,
   [WS_METHODS.scheduledTasksSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.designRead]: AuthOrchestrationReadScope,
+  [WS_METHODS.designSync]: AuthOrchestrationOperateScope,
   [WS_METHODS.secretsAnswerRequest]: AuthOrchestrationOperateScope,
   // Delivery logs hold request bodies, so they need the same scope as the URL.
   [WS_METHODS.scheduledTasksListWebhookDeliveries]: AuthOrchestrationOperateScope,
@@ -192,6 +194,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.previewClearProfile]: AuthPreviewOperateScope,
   [WS_METHODS.previewReportProfiles]: AuthPreviewOperateScope,
   [WS_METHODS.previewReportStatus]: AuthPreviewOperateScope,
+  [WS_METHODS.previewCaptureDesignSnapshot]: AuthOrchestrationReadScope,
   [WS_METHODS.previewStopLocalServer]: AuthTerminalOperateScope,
   [WS_METHODS.subscribePreviewEvents]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeDiscoveredLocalServers]: AuthOrchestrationReadScope,

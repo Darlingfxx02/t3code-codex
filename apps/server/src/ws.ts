@@ -1,4 +1,4 @@
-import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
+import { DEFAULT_MODEL, OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
@@ -6,6 +6,7 @@ import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
 import * as PeerLinks from "./peer/PeerLinks.ts";
 
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Base64 from "effect/encoding/Base64";
 import * as Effect from "effect/Effect";
@@ -19,6 +20,9 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
+import * as Semaphore from "effect/Semaphore";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { rpcInitialItems } from "./rpcInitialItems.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import {
@@ -94,15 +98,24 @@ import {
   RpcClientId,
   EnvironmentAuthorizationError,
   type ProjectId,
+  type EnvironmentId,
   type ProviderDriverKind,
-  type ProviderInstanceId,
+  ProviderInstanceId,
   ThreadId,
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
   WS_METHODS,
   WsRpcGroup,
+  DesignServerStateSnapshot,
+  DesignPackageMalformedError,
+  PreviewSessionLookupError,
+  TaskWorkspaceError,
+  SecretReference,
+  type TaskWorkspaceConnection,
 } from "@t3tools/contracts";
+import { applyDesignSyncRequest, type DesignServerState } from "@t3tools/shared/designSync";
 import {
+  HttpClient,
   HttpRouter,
   HttpServerRequest,
   HttpServerRespondable,
@@ -116,6 +129,8 @@ import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
+import * as ProcessRunner from "./processRunner.ts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
@@ -125,6 +140,8 @@ import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts"
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
+import { makeTaskWorkspaceService } from "./taskWorkspace/TaskWorkspaceService.ts";
+import { createJiraClient } from "./taskWorkspace/jiraClient.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import {
@@ -273,7 +290,11 @@ import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import { requestUrl } from "./requestUrl.ts";
 
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
+const decodeUnknownJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+const isTaskWorkspaceError = Schema.is(TaskWorkspaceError);
+const isSecretReference = Schema.is(SecretReference);
 const isProviderUploadFeedbackError = Schema.is(ProviderUploadFeedbackError);
+const isServerBrowserTabNotFound = Schema.is(ServerBrowser.ServerBrowserTabNotFoundError);
 
 const resolveDiscoveryForConfig = <A, E, R>(
   discovery: Effect.Effect<A, E, R>,
@@ -609,6 +630,36 @@ function projectFileFailureContext(
       return { failure: "binary_file", resolvedPath: error.resolvedPath };
     default:
       return unexpectedCompatibilityError(error);
+  }
+}
+
+const decodeDesignServerState = Schema.decodeUnknownOption(
+  Schema.fromJsonString(DesignServerStateSnapshot),
+);
+const encodeDesignServerState = Schema.encodeSync(Schema.fromJsonString(DesignServerStateSnapshot));
+const DESIGN_SYNC_SEMAPHORE = Semaphore.makeUnsafe(1);
+
+function parseDesignServerState(
+  contents: string | null,
+  documentId: string,
+): DesignServerState | null {
+  if (contents === null) return { documentId, revision: 0, nodes: new Map(), assetIds: new Set() };
+  try {
+    const decoded = decodeDesignServerState(contents);
+    if (decoded._tag === "None") return null;
+    const parsed = decoded.value;
+    return {
+      documentId: parsed.documentId,
+      revision: parsed.revision,
+      nodes: new Map(Object.entries(parsed.nodes)),
+      assetIds: new Set(parsed.assetIds),
+      assetPayloads: new Map(
+        (parsed.assetPayloads ?? []).map((asset) => [asset.assetId, asset] as const),
+      ),
+      ...(parsed.snapshot === undefined ? {} : { snapshot: parsed.snapshot }),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -1393,6 +1444,7 @@ export const layerWsRpc = (
         ).pipe(Effect.ignore);
       };
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
+      const path = yield* Path.Path;
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
@@ -1438,6 +1490,11 @@ export const layerWsRpc = (
       const keybindings = yield* Keybindings.Keybindings;
       const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
+      const processRunnerOption = yield* Effect.serviceOption(ProcessRunner.ProcessRunner);
+      const httpClientOption = yield* Effect.serviceOption(HttpClient.HttpClient);
+      const childProcessSpawnerOption = yield* Effect.serviceOption(
+        ChildProcessSpawner.ChildProcessSpawner,
+      );
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
       const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
@@ -1468,7 +1525,1371 @@ export const layerWsRpc = (
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+      const vcsDriverRegistryOption = yield* Effect.serviceOption(
+        VcsDriverRegistry.VcsDriverRegistry,
+      );
+      const jiraClientFor = Effect.fn("TaskWorkspace.jiraClientFor")(
+        function* (connection: TaskWorkspaceConnection) {
+          const secretReference = isSecretReference(connection.secretRef)
+            ? connection.secretRef
+            : null;
+          const resolved =
+            secretReference === null ? [] : yield* secretResolver.read([secretReference]);
+          const token = resolved[0]?.trim() || process.env.T3_JIRA_TOKEN?.trim() || null;
+          const url = connection.url?.trim() || process.env.T3_JIRA_URL?.trim() || null;
+          if (token === null || url === null) return null;
+          return createJiraClient({
+            baseUrl: url,
+            token,
+            username: connection.username,
+          });
+        },
+      );
+      const storybookWorkspaces = new Map<
+        string,
+        Deferred.Deferred<void, TaskWorkspaceError>
+      >();
+      const ensureStorybookProcess = Effect.fn("TaskWorkspace.ensureStorybookProcess")(
+        function* (workspaceRoot: string) {
+          const existing = storybookWorkspaces.get(workspaceRoot);
+          if (existing !== undefined) return yield* Deferred.await(existing);
+          if (childProcessSpawnerOption._tag === "None") return;
+          const readiness = yield* Deferred.make<void, TaskWorkspaceError>();
+          storybookWorkspaces.set(workspaceRoot, readiness);
+          const packageFile = yield* Effect.result(
+            workspaceFileSystem.readFile({
+              cwd: workspaceRoot,
+              relativePath: "package.json",
+              allowMissing: true,
+            }),
+          );
+          if (Result.isFailure(packageFile) || packageFile.success.exists === false) {
+            storybookWorkspaces.delete(workspaceRoot);
+            yield* Deferred.succeed(readiness, undefined);
+            return;
+          }
+          const packageJson = Option.getOrNull(decodeUnknownJson(packageFile.success.contents));
+          const packageRecord =
+            packageJson !== null && typeof packageJson === "object"
+              ? (packageJson as { readonly packageManager?: unknown; readonly scripts?: unknown })
+              : {};
+          const scripts =
+            packageRecord.scripts !== null && typeof packageRecord.scripts === "object"
+              ? (packageRecord.scripts as { readonly storybook?: unknown })
+              : {};
+          if (typeof scripts.storybook !== "string" || scripts.storybook.trim() === "") {
+            storybookWorkspaces.delete(workspaceRoot);
+            yield* Deferred.succeed(readiness, undefined);
+            return;
+          }
+          const packageManager =
+            typeof packageRecord.packageManager === "string" ? packageRecord.packageManager : "pnpm";
+          const runner = packageManager.startsWith("npm")
+            ? "npm"
+            : packageManager.startsWith("yarn")
+              ? "yarn"
+              : "pnpm";
+          const command = (yield* HostProcess.Platform) === "win32" ? `${runner}.cmd` : runner;
+          const args =
+            runner === "yarn"
+              ? ["storybook", "--no-open", "--port", "6006"]
+              : ["run", "storybook", "--", "--no-open", "--port", "6006"];
+          if (httpClientOption._tag === "Some") {
+            const alreadyReady = yield* HttpClient.withScope(httpClientOption.value)
+              .get("http://localhost:6006")
+              .pipe(
+                Effect.timeout(Duration.seconds(1)),
+                Effect.flatMap((response) =>
+                  response.arrayBuffer.pipe(Effect.as(response.status === 200)),
+                ),
+                Effect.scoped,
+                Effect.orElseSucceed(() => false),
+              );
+            if (alreadyReady) {
+              yield* Deferred.succeed(readiness, undefined);
+              return;
+            }
+          }
+          const spawned = yield* Effect.result(
+            childProcessSpawnerOption.value
+              .spawn(
+                ChildProcess.make(command, args, {
+                  cwd: workspaceRoot,
+                  detached: true,
+                  stdin: "ignore",
+                  stdout: "ignore",
+                  stderr: "ignore",
+                }),
+              )
+              .pipe(Effect.flatMap((handle) => handle.unref), Effect.scoped),
+          );
+          if (Result.isFailure(spawned)) {
+            storybookWorkspaces.delete(workspaceRoot);
+            yield* Deferred.fail(
+              readiness,
+              new TaskWorkspaceError({
+                operation: "launchStorybook",
+                message: "Could not start the Storybook process.",
+              }),
+            );
+            return yield* new TaskWorkspaceError({
+              operation: "launchStorybook",
+              message: "Could not start the Storybook process.",
+            });
+          }
+          if (httpClientOption._tag === "None") {
+            yield* Deferred.succeed(readiness, undefined);
+            return;
+          }
+          for (let attempt = 0; attempt < 30; attempt += 1) {
+            const ready = yield* HttpClient.withScope(httpClientOption.value)
+              .get("http://localhost:6006")
+              .pipe(
+                Effect.timeout(Duration.seconds(1)),
+                Effect.flatMap((response) =>
+                  response.arrayBuffer.pipe(Effect.as(response.status === 200)),
+                ),
+                Effect.scoped,
+                Effect.orElseSucceed(() => false),
+              );
+            if (ready) {
+              yield* Deferred.succeed(readiness, undefined);
+              return;
+            }
+            yield* Effect.sleep(Duration.seconds(1));
+          }
+          storybookWorkspaces.delete(workspaceRoot);
+          const timeoutError = new TaskWorkspaceError({
+            operation: "launchStorybook",
+            message: "Storybook did not become ready on http://localhost:6006 within 30 seconds.",
+          });
+          yield* Deferred.fail(readiness, timeoutError);
+          return yield* timeoutError;
+        },
+      );
+      const launchStorybook = Effect.fn("TaskWorkspace.launchStorybook")(
+        function* (launch: {
+          readonly workspaceRoot: string;
+          readonly storyId: string;
+          readonly url: string | null;
+        }) {
+          const target =
+            launch.url?.trim() ||
+            `http://localhost:6006/?path=/story/${encodeURIComponent(launch.storyId)}`;
+          if (target.includes("localhost:6006")) yield* ensureStorybookProcess(launch.workspaceRoot);
+          return yield* externalLauncher.launchBrowser(target).pipe(
+            Effect.mapError(
+              (cause) =>
+                new TaskWorkspaceError({
+                  operation: "launchStorybook",
+                  message: `Could not open Storybook story ${launch.storyId}.`,
+                  cause,
+                }),
+            ),
+          );
+        },
+      );
+      const publishVariant =
+        vcsDriverRegistryOption._tag === "None"
+          ? undefined
+          : Effect.fn("TaskWorkspace.publishVariant")(
+              function* (publish: {
+                readonly workspaceRoot: string;
+                readonly branch: string;
+                readonly variant: {
+                  readonly worktreePath: string | null;
+                  readonly sourceSha: string;
+                };
+              }) {
+                if (!/^[A-Za-z0-9._/-]+$/.test(publish.branch) || publish.branch.includes("..")) {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "The publish branch name is invalid.",
+                  });
+                }
+                if (publish.variant.worktreePath === null) {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "The selected variant has no isolated worktree.",
+                  });
+                }
+                const workspaceRoot = path.resolve(publish.workspaceRoot);
+                const worktreePath = path.resolve(publish.variant.worktreePath);
+                const vcs = yield* vcsDriverRegistryOption.value.resolve({
+                  cwd: worktreePath,
+                  requestedKind: "auto",
+                });
+                if (vcs.kind !== "git") {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "Publishing task variants currently requires a Git worktree.",
+                  });
+                }
+                const head = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.resolveHead",
+                  cwd: worktreePath,
+                  args: ["rev-parse", "HEAD"],
+                });
+                const sourceSha = head.stdout.trim();
+                if (sourceSha === "") {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "The selected worktree has no commit to publish.",
+                  });
+                }
+                const repositoryRoot = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.resolveWorktreeRoot",
+                  cwd: worktreePath,
+                  args: ["rev-parse", "--show-toplevel"],
+                });
+                if (path.resolve(repositoryRoot.stdout.trim()) !== worktreePath) {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "The selected path is not the expected Git worktree.",
+                  });
+                }
+                const workspaceRepository = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.resolveWorkspaceRoot",
+                  cwd: workspaceRoot,
+                  args: ["rev-parse", "--show-toplevel"],
+                });
+                const worktreeCommonDir = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.resolveWorktreeCommonDir",
+                  cwd: worktreePath,
+                  args: ["rev-parse", "--git-common-dir"],
+                });
+                const workspaceCommonDir = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.resolveWorkspaceCommonDir",
+                  cwd: workspaceRoot,
+                  args: ["rev-parse", "--git-common-dir"],
+                });
+                if (
+                  path.resolve(workspaceRepository.stdout.trim()) !== workspaceRoot ||
+                  path.resolve(worktreePath, worktreeCommonDir.stdout.trim()) !==
+                    path.resolve(workspaceRoot, workspaceCommonDir.stdout.trim())
+                ) {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "The selected worktree belongs to a different Git project.",
+                  });
+                }
+                if (sourceSha === publish.variant.sourceSha) {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "The selected worktree has no commit beyond the scenario source.",
+                  });
+                }
+                const sourceIsAncestor = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.verifySourceAncestor",
+                  cwd: worktreePath,
+                  args: ["merge-base", "--is-ancestor", publish.variant.sourceSha, "HEAD"],
+                  allowNonZeroExit: true,
+                });
+                if (sourceIsAncestor.exitCode !== 0) {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "The selected worktree does not descend from the recorded scenario source.",
+                  });
+                }
+                const dirty = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.verifyClean",
+                  cwd: worktreePath,
+                  args: ["status", "--porcelain"],
+                });
+                if (dirty.stdout.trim() !== "") {
+                  return yield* new TaskWorkspaceError({
+                    operation: "publishVariant",
+                    message: "Commit the selected worktree changes before publishing.",
+                  });
+                }
+                const origin = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.verifyOrigin",
+                  cwd: worktreePath,
+                  args: ["remote", "get-url", "origin"],
+                });
+                const remoteHead = yield* vcs.driver.execute({
+                  operation: "TaskWorkspace.publish.resolveRemoteHead",
+                  cwd: worktreePath,
+                  args: ["ls-remote", "origin", `refs/heads/${publish.branch}`],
+                });
+                const remoteSha = remoteHead.stdout.trim().split(/\s+/)[0] ?? "";
+                if (remoteSha !== sourceSha) {
+                  yield* vcs.driver.execute({
+                    operation: "TaskWorkspace.publish.push",
+                    cwd: worktreePath,
+                    args: ["push", "--no-force", "origin", `HEAD:refs/heads/${publish.branch}`],
+                  });
+                }
+                return { pushedSha: sourceSha, remoteUrl: origin.stdout.trim() };
+              },
+              (effect) =>
+                effect.pipe(
+                  Effect.mapError((cause) =>
+                    isTaskWorkspaceError(cause)
+                      ? cause
+                      : new TaskWorkspaceError({
+                          operation: "publishVariant",
+                          message: "Could not publish the selected task variant.",
+                          cause,
+                        }),
+                  ),
+                ),
+            );
+      const monitorRun = Effect.fn("TaskWorkspace.monitorRun")(
+        function* (monitor: {
+          readonly projectId: ProjectId;
+          readonly workspaceRoot: string;
+          readonly task: import("@t3tools/contracts").TaskWorkspaceTask;
+          readonly run: NonNullable<import("@t3tools/contracts").TaskWorkspaceTask["run"]>;
+          readonly report: (update: {
+            readonly variantId: string;
+            readonly status: "succeeded" | "failed" | "cancelled";
+            readonly stageId?: string;
+            readonly stageCompleted?: boolean;
+            readonly error?: string | null;
+            readonly output?: string;
+            readonly final?: boolean;
+            readonly checks?: ReadonlyArray<import("@t3tools/contracts").TaskWorkspaceCheckResult>;
+            readonly threadIds?: ReadonlyArray<ThreadId>;
+            readonly comments?: ReadonlyArray<import("@t3tools/contracts").TaskWorkspaceComment>;
+            readonly artifacts?: ReadonlyArray<import("@t3tools/contracts").TaskWorkspaceArtifact>;
+          }) => Effect.Effect<void, TaskWorkspaceError>;
+          readonly recordThread: (
+            variantId: string,
+            threadIds: ReadonlyArray<ThreadId>,
+          ) => Effect.Effect<void, TaskWorkspaceError>;
+          readonly isCancelled: Effect.Effect<boolean, TaskWorkspaceError>;
+        }) {
+          const runStage = Effect.fn("TaskWorkspace.runStage")(
+            function* (
+              stage: import("@t3tools/contracts").TaskWorkspaceStage,
+              cwd: string,
+              prompt: string,
+              variantId?: string,
+            ) {
+              const uuid = yield* random.uuidV4();
+              const launched = yield* threadLaunch.launch({
+                commandId: CommandId.make(`task-workspace-stage:${uuid}`),
+                projectId: monitor.projectId,
+                title: `${monitor.task.issue.key} · ${stage.name}`,
+                modelSelection: {
+                  instanceId: ProviderInstanceId.make(stage.provider ?? "codex"),
+                  model: stage.model ?? DEFAULT_MODEL,
+                },
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                workspaceStrategy: { type: "existing_worktree", worktreePath: cwd },
+                initialMessage: {
+                  text: [prompt, stage.prompt, ...(stage.rules ?? [])].filter(Boolean).join("\n\n"),
+                  attachments: [],
+                },
+                createdBy: "agent",
+                creationSource: "mcp",
+              });
+              yield* monitor.recordThread(
+                variantId ??
+                  monitor.run.variants.find((variant) => variant.worktreePath === cwd)?.id ??
+                  monitor.run.variants[0]!.id,
+                [launched.threadId],
+              );
+              const waited = yield* threadManagement.waitForThread({
+                projectId: monitor.projectId,
+                threadId: launched.threadId,
+                timeoutMs: stage.timeoutMs,
+              });
+              const snapshot = yield* threadManagement.getThreadSnapshot(launched.threadId);
+              const output = snapshot.projection.visibleTurnItems
+                .flatMap((row) => (row.item.type === "assistant_message" ? [row.item.text] : []))
+                .join("\n")
+                .slice(-20_000);
+              return {
+                threadId: launched.threadId,
+                completed: !waited.timedOut && (waited.resultRun ?? waited.run)?.status === "completed",
+                output,
+                exitCode: null,
+                attempt: 1,
+              };
+            },
+          );
+          const runStageWithRetries = Effect.fn("TaskWorkspace.runStageWithRetries")(
+            function* (
+              stage: import("@t3tools/contracts").TaskWorkspaceStage,
+              cwd: string,
+              prompt: string,
+              variantId?: string,
+            ) {
+              let attempt = 0;
+              while (attempt <= monitor.task.scenario.maxRetries) {
+                if (yield* monitor.isCancelled) {
+                  return {
+                    threadId: null,
+                    completed: false,
+                    output: "Stage cancelled before retry.",
+                    exitCode: null,
+                    attempt: attempt + 1,
+                  };
+                }
+                const result = yield* Effect.result(runStage(stage, cwd, prompt, variantId));
+                if (Result.isSuccess(result) && result.success.completed)
+                  return { ...result.success, attempt: attempt + 1 };
+                if (attempt === monitor.task.scenario.maxRetries) {
+                  return Result.isSuccess(result)
+                    ? { ...result.success, attempt: attempt + 1 }
+                    : {
+                        threadId: null,
+                        completed: false,
+                        output: "The stage worker failed before returning a result.",
+                          exitCode: null,
+                        attempt: attempt + 1,
+                      };
+                }
+                attempt += 1;
+              }
+              return {
+                threadId: null,
+                completed: false,
+                output: "The stage retry limit was reached.",
+                exitCode: null,
+                attempt: attempt + 1,
+              };
+            },
+          );
+          const runCommandCheckWithRetries = Effect.fn("TaskWorkspace.runCommandCheckWithRetries")(
+            function* (stage: import("@t3tools/contracts").TaskWorkspaceStage, cwd: string) {
+              const configuredCommand = stage.command?.trim();
+              if (configuredCommand === undefined || configuredCommand === "")
+                return yield* new TaskWorkspaceError({
+                  operation: "runScenario",
+                  message: "A command check was requested without a command.",
+                });
+              if (processRunnerOption._tag === "None")
+                return {
+                  threadId: null,
+                  completed: false,
+                  output: "Check execution is unavailable on this server.",
+                  exitCode: 1,
+                  attempt: 0,
+                };
+              let attempt = 0;
+              while (attempt <= monitor.task.scenario.maxRetries) {
+                if (yield* monitor.isCancelled)
+                  return {
+                    threadId: null,
+                    completed: false,
+                    output: "Check cancelled before retry.",
+                    exitCode: null,
+                    attempt: attempt + 1,
+                  };
+                const platform = yield* HostProcess.Platform;
+                const result = yield* Effect.result(
+                  processRunnerOption.value.run({
+                    command: platform === "win32" ? "cmd.exe" : "sh",
+                    args:
+                      platform === "win32"
+                        ? ["/d", "/s", "/c", configuredCommand]
+                        : ["-lc", configuredCommand],
+                    cwd,
+                    timeout: Duration.millis(stage.timeoutMs),
+                    outputMode: "truncate",
+                    timeoutBehavior: "timedOutResult",
+                  }),
+                );
+                const outcome =
+                  Result.isSuccess(result)
+                    ? {
+                        threadId: null,
+                        completed: result.success.code === 0 && !result.success.timedOut,
+                        output: [result.success.stdout, result.success.stderr]
+                          .filter(Boolean)
+                          .join("\n")
+                          .slice(-20_000),
+                        exitCode:
+                          result.success.code === null ? null : Number(result.success.code),
+                      }
+                    : {
+                        threadId: null,
+                        completed: false,
+                        output: "Check process failed before returning a result.",
+                        exitCode: 1,
+                      };
+                if (outcome.completed || attempt === monitor.task.scenario.maxRetries)
+                  return { ...outcome, attempt: attempt + 1 };
+                attempt += 1;
+              }
+              return {
+                threadId: null,
+                completed: false,
+                output: "The check retry limit was reached.",
+                exitCode: null,
+                attempt: attempt + 1,
+              };
+            },
+          );
+          const agentOutcomes = yield* Effect.forEach(
+            monitor.run.variants,
+            (variant) =>
+              Effect.gen(function* () {
+                const threadId = variant.threadIds[0];
+                if (threadId === undefined) {
+                  yield* monitor.report({
+                    variantId: variant.id,
+                    status: "failed",
+                    error: "The agent thread was not created.",
+                  });
+                  return false;
+                }
+                const waited = yield* Effect.result(
+                  threadManagement.waitForThread({
+                    projectId: monitor.projectId,
+                    threadId,
+                    timeoutMs: monitor.task.scenario.stages[0]?.timeoutMs ?? 1_800_000,
+                  }),
+                );
+                const completed =
+                  Result.isSuccess(waited) &&
+                  !waited.success.timedOut &&
+                  (waited.success.resultRun ?? waited.success.run)?.status === "completed";
+                const output =
+                  completed && Result.isSuccess(waited)
+                    ? yield* Effect.result(
+                        threadManagement.getThreadSnapshot(threadId).pipe(
+                          Effect.map((threadSnapshot) =>
+                            threadSnapshot.projection.visibleTurnItems
+                              .flatMap((row) =>
+                                row.item.type === "assistant_message" ? [row.item.text] : [],
+                              )
+                              .join("\n")
+                              .slice(-20_000),
+                          ),
+                        ),
+                      )
+                    : Result.succeed("");
+                const agentOutput = Result.isSuccess(output) ? output.success : "";
+                const storyId = /(?:^|\n)STORY_ID:\s*([A-Za-z0-9._/-]+)/i.exec(agentOutput)?.[1];
+                yield* monitor.report({
+                  variantId: variant.id,
+                  status: completed ? "succeeded" : "failed",
+                  ...(monitor.task.scenario.stages.find((stage) => stage.kind === "agent")?.id === undefined
+                    ? {}
+                    : {
+                        stageId: monitor.task.scenario.stages.find((stage) => stage.kind === "agent")!.id,
+                      }),
+                  stageCompleted: completed,
+                  output: agentOutput,
+                  ...(storyId === undefined
+                    ? {}
+                    : {
+                        artifacts: [
+                          {
+                            id: `${monitor.run.id}-${variant.id}-story`,
+                            variantId: variant.id,
+                            kind: "story" as const,
+                            label: "Generated Storybook story",
+                            path: null,
+                            url: `http://localhost:6006/?path=/story/${encodeURIComponent(storyId)}`,
+                            storyId,
+                            sourceSha: variant.sourceSha,
+                            createdAt: DateTime.formatIso(DateTime.nowUnsafe()),
+                          },
+                        ],
+                      }),
+                  ...(completed
+                    ? {}
+                    : { error: "The agent stage did not complete successfully." }),
+                });
+                return completed;
+              }),
+            { concurrency: Math.min(monitor.run.variants.length, 5) },
+          );
+          if (agentOutcomes.some((completed) => !completed)) return;
+          if (yield* monitor.isCancelled) return;
+          const candidateStages = monitor.task.scenario.stages;
+          const candidateAgentStages = candidateStages.filter((stage) => stage.kind === "agent");
+          const candidatePublishStages = candidateStages.filter((stage) => stage.kind === "publish");
+          const candidateAgentId =
+            candidateAgentStages.find((stage) => stage.dependsOn.length === 0)?.id ??
+            candidateAgentStages[0]?.id;
+          const candidateRunnableStages = candidateStages.filter(
+            (stage) => stage.id !== candidateAgentId && stage.kind !== "publish",
+          );
+          const simplePipeline =
+            candidateAgentStages.length === 1 &&
+            candidatePublishStages.length === 0 &&
+            candidateStages.filter((stage) => stage.kind === "audit").length <= 1 &&
+            candidateRunnableStages.every(
+              (stage) =>
+                (stage.kind === "audit" &&
+                  candidateAgentId !== undefined &&
+                  stage.dependsOn.every((dependency) => dependency === candidateAgentId)) ||
+                (stage.kind === "check" &&
+                  candidateAgentId !== undefined &&
+                  stage.dependsOn.every(
+                    (dependency) =>
+                      dependency === candidateAgentId ||
+                      dependency === candidateStages.find((entry) => entry.kind === "audit")?.id,
+                  )),
+            );
+          if (
+            !simplePipeline &&
+            candidateAgentStages.length >= 1 &&
+            candidateAgentId !== undefined
+          ) {
+            const firstWorktree =
+              monitor.run.variants.find((variant) => variant.worktreePath !== null)?.worktreePath ??
+              null;
+            const runGenericCheck = Effect.fn("TaskWorkspace.runGenericCheck")(
+              function* (
+                stage: import("@t3tools/contracts").TaskWorkspaceStage,
+                cwd: string,
+                variantId: string,
+              ) {
+                const configuredCommand = stage.command?.trim();
+                if (configuredCommand !== undefined && configuredCommand !== "")
+                  return yield* runCommandCheckWithRetries(stage, cwd);
+                const worker = yield* Effect.result(
+                  runStageWithRetries(
+                    stage,
+                    cwd,
+                    `${stage.prompt}\n\nRun the check and end your response with exactly CHECK_RESULT: PASS or CHECK_RESULT: FAIL.`,
+                    variantId,
+                  ),
+                );
+                if (Result.isFailure(worker))
+                  return {
+                    threadId: null,
+                    completed: false,
+                    output: "Worker stage failed before completion.",
+                    exitCode: 1,
+                    attempt: 1,
+                  };
+                const completed = worker.success.completed && /(?:^|\n)CHECK_RESULT:\s*PASS\b/i.test(worker.success.output);
+                return {
+                  ...worker.success,
+                  completed,
+                  output: completed
+                    ? worker.success.output
+                    : `${worker.success.output}\nWorker did not provide CHECK_RESULT: PASS.`,
+                  exitCode: completed ? 0 : 1,
+                };
+              },
+            );
+            const completedStageIds = new Set<string>([candidateAgentId!]);
+            const pendingStages = candidateRunnableStages.slice();
+            while (pendingStages.length > 0) {
+              const ready = pendingStages.filter((stage) =>
+                stage.dependsOn.every((dependency) => completedStageIds.has(dependency)),
+              );
+              if (ready.length === 0) {
+                yield* Effect.forEach(monitor.run.variants, (variant) =>
+                  monitor.report({
+                    variantId: variant.id,
+                    status: "failed",
+                    error: "Stage dependencies could not be resolved into an executable graph.",
+                  }),
+                );
+                return;
+              }
+              const stageResults = yield* Effect.forEach(
+                ready,
+                (stage) =>
+                  Effect.gen(function* () {
+                    if (stage.kind === "agent") {
+                      type AgentStageOutcome = {
+                        readonly threadId: ThreadId | null;
+                        readonly completed: boolean;
+                        readonly output: string;
+                        readonly exitCode: number | null;
+                        readonly attempt: number;
+                      };
+                      const agentResults = yield* Effect.forEach(
+                        monitor.run.variants,
+                        (variant) =>
+                          variant.worktreePath === null
+                            ? Effect.succeed({
+                                threadId: null,
+                                completed: false,
+                                output: "No worktree was available for agent stage.",
+                                exitCode: 1,
+                                attempt: 0,
+                              } satisfies AgentStageOutcome)
+                            : runStageWithRetries(
+                                stage,
+                                variant.worktreePath,
+                                [
+                                  monitor.task.issue.summary,
+                                  monitor.task.issue.description,
+                                  ...(stage.skills.length > 0
+                                    ? [`Skills to use: ${stage.skills.join(", ")}`]
+                                    : []),
+                                  ...(stage.connectors.length > 0
+                                    ? [`Connectors to use: ${stage.connectors.join(", ")}`]
+                                    : []),
+                                ].join("\n\n"),
+                                variant.id,
+                              ).pipe(Effect.map((result): AgentStageOutcome => result)),
+                        { concurrency: stage.parallel ? Math.min(monitor.run.variants.length, 5) : 1 },
+                      );
+                      yield* Effect.forEach(monitor.run.variants, (variant, index) =>
+                        (() => {
+                          const output = agentResults[index]?.output ?? "Agent stage produced no output.";
+                          const storyId = /(?:^|\n)STORY_ID:\s*([A-Za-z0-9._/-]+)/i.exec(output)?.[1];
+                          return monitor.report({
+                            variantId: variant.id,
+                            status: agentResults[index]?.completed === true ? "succeeded" : "failed",
+                            stageId: stage.id,
+                            stageCompleted: agentResults[index]?.completed === true,
+                            output,
+                            threadIds:
+                              agentResults[index]?.threadId === null ||
+                              agentResults[index]?.threadId === undefined
+                                ? []
+                                : [agentResults[index]!.threadId],
+                            ...(storyId === undefined
+                              ? {}
+                              : {
+                                  artifacts: [
+                                    {
+                                      id: `${monitor.run.id}-${variant.id}-${stage.id}-story`,
+                                      variantId: variant.id,
+                                      kind: "story" as const,
+                                      label: `${stage.name} Storybook story`,
+                                      path: null,
+                                      url: `http://localhost:6006/?path=/story/${encodeURIComponent(storyId)}`,
+                                      storyId,
+                                      sourceSha: variant.sourceSha,
+                                      createdAt: DateTime.formatIso(DateTime.nowUnsafe()),
+                                    },
+                                  ],
+                                }),
+                            ...(agentResults[index]?.completed === true
+                              ? {}
+                              : { error: `Agent stage ${stage.name} did not complete successfully.` }),
+                          });
+                        })(),
+                      );
+                      return {
+                        stage,
+                        ok: agentResults.every((result) => result.completed) || stage.required === false,
+                        output: agentResults.map((result) => result.output).filter(Boolean).join("\n"),
+                      };
+                    }
+                    if (stage.kind === "audit") {
+                      if (firstWorktree === null)
+                        return { stage, ok: false, output: "No worktree was available for audit." };
+                      const audit = yield* Effect.result(
+                        runStageWithRetries(
+                          stage,
+                          firstWorktree,
+                          `Compare the completed variants in ${monitor.run.variants
+                            .map((variant) => variant.worktreePath)
+                            .join(", ")}.`,
+                          monitor.run.variants[0]!.id,
+                        ),
+                      );
+                      if (Result.isFailure(audit) || !audit.success.completed)
+                        return {
+                          stage,
+                          ok: false,
+                          output: Result.isSuccess(audit)
+                            ? audit.success.output
+                            : "The audit worker failed before returning a result.",
+                        };
+                      const auditVariant = monitor.run.variants[0]!;
+                      const createdAt = DateTime.formatIso(DateTime.nowUnsafe());
+                      yield* Effect.forEach(
+                        monitor.run.variants,
+                        (variant, index) =>
+                          monitor.report({
+                            variantId: variant.id,
+                            status: "succeeded",
+                            stageId: stage.id,
+                            stageCompleted: true,
+                            ...(index === 0 && audit.success.threadId !== null
+                              ? { threadIds: [audit.success.threadId] }
+                              : {}),
+                            ...(index === 0
+                              ? {
+                                  comments: [
+                                    {
+                                      id: `${monitor.run.id}-${stage.id}-comment`,
+                                      author: "Audit worker",
+                                      body:
+                                        audit.success.output ||
+                                        "Audit worker completed without a written report.",
+                                      createdAt,
+                                      source: "agent" as const,
+                                    },
+                                  ],
+                                  artifacts: [
+                                    {
+                                      id: `${monitor.run.id}-${stage.id}-report`,
+                                      variantId: auditVariant.id,
+                                      kind: "report" as const,
+                                      label: `${stage.name} report`,
+                                      path: null,
+                                      url: null,
+                                      storyId: null,
+                                      sourceSha: auditVariant.sourceSha,
+                                      createdAt,
+                                    },
+                                  ],
+                                }
+                              : {}),
+                          }),
+                        { discard: true },
+                      );
+                      return { stage, ok: true, output: audit.success.output };
+                    }
+                    const results = yield* Effect.forEach(
+                      monitor.run.variants,
+                      (variant) =>
+                        variant.worktreePath === null
+                          ? Effect.succeed({
+                              threadId: null,
+                              completed: false,
+                              output: "No worktree was available.",
+                              exitCode: 1,
+                              attempt: 0,
+                            })
+                          : runGenericCheck(stage, variant.worktreePath, variant.id),
+                      { concurrency: stage.parallel ? Math.min(monitor.run.variants.length, 5) : 1 },
+                    );
+                    yield* Effect.forEach(monitor.run.variants, (variant, index) =>
+                      monitor.report({
+                        variantId: variant.id,
+                        status:
+                          results[index]?.completed === true || stage.required === false
+                            ? "succeeded"
+                            : "failed",
+                        stageId: stage.id,
+                        stageCompleted:
+                          results[index]?.completed === true || stage.required === false,
+                        threadIds:
+                          results[index]?.threadId === null || results[index]?.threadId === undefined
+                            ? []
+                            : [results[index]!.threadId],
+                        checks: [
+                          {
+                            id: `${monitor.run.id}-${variant.id}-${stage.id}`,
+                            name: stage.name,
+                            status: results[index]?.completed === true ? "passed" : "failed",
+                            command: stage.command,
+                            exitCode: results[index]?.exitCode ?? null,
+                            ...(results[index]?.attempt === undefined ? {} : { attempt: results[index]!.attempt }),
+                            output: results[index]?.output ?? "Worker produced no output.",
+                            startedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+                            finishedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+                          },
+                        ],
+                      }),
+                    );
+                    return {
+                      stage,
+                      ok: stage.required === false || results.every((result) => result.completed),
+                      output: results.map((result) => result.output).filter(Boolean).join("\n"),
+                    };
+                  }),
+                { concurrency: ready.every((stage) => stage.parallel) ? Math.min(ready.length, 5) : 1 },
+              );
+              const failedStage = stageResults.find((result) => !result.ok);
+              if (failedStage !== undefined) {
+                yield* Effect.forEach(monitor.run.variants, (variant) =>
+                  monitor.report({
+                    variantId: variant.id,
+                    status: "failed",
+                    error: `Stage ${failedStage.stage.name} failed.`,
+                    output: failedStage.output,
+                  }),
+                );
+                return;
+              }
+              ready.forEach((stage) => {
+                completedStageIds.add(stage.id);
+                pendingStages.splice(pendingStages.indexOf(stage), 1);
+              });
+              if (yield* monitor.isCancelled) return;
+            }
+            yield* Effect.forEach(monitor.run.variants, (variant) =>
+              monitor.report({
+                variantId: variant.id,
+                status: "succeeded",
+                final: true,
+                ...(candidatePublishStages[0] === undefined
+                  ? {}
+                  : {
+                      stageId: candidatePublishStages[0].id,
+                      stageCompleted: false,
+                      output: "Publish stage is ready for the explicit Publish action.",
+                    }),
+              }),
+            );
+            return;
+          }
+          const stages = monitor.task.scenario.stages;
+          const agentStages = stages.filter((stage) => stage.kind === "agent");
+          const auditStages = stages.filter((stage) => stage.kind === "audit");
+          const publishStages = stages.filter((stage) => stage.kind === "publish");
+          const checkStages = stages.filter((stage) => stage.kind === "check");
+          const unsupportedGraph =
+            agentStages.length !== 1 ||
+            auditStages.length > 1 ||
+            checkStages.some(
+              (stage) =>
+                auditStages.length > 0 && !stage.dependsOn.includes(auditStages[0]!.id),
+            ) ||
+            stages.some(
+              (stage) =>
+                stage.kind !== "agent" &&
+                stage.kind !== "audit" &&
+                stage.kind !== "check" &&
+                stage.kind !== "publish",
+            );
+          if (unsupportedGraph) {
+            yield* Effect.forEach(monitor.run.variants, (variant) =>
+              monitor.report({
+                variantId: variant.id,
+                status: "failed",
+                error:
+                  "This scenario graph is not supported by the current runner. Use one agent stage, one optional audit stage, then check stages.",
+              }),
+            );
+            return;
+          }
+          if (publishStages.length > 0) {
+            yield* Effect.forEach(monitor.run.variants, (variant) =>
+              monitor.report({
+                variantId: variant.id,
+                status: "succeeded",
+                final: true,
+                stageId: publishStages[0]!.id,
+                stageCompleted: false,
+                output: "Publish stage is ready for the explicit Publish action.",
+              }),
+            );
+            return;
+          }
+          const firstWorktree =
+            monitor.run.variants.find((variant) => variant.worktreePath !== null)?.worktreePath ??
+            null;
+          const auditStage = auditStages[0];
+          if (auditStage === undefined || firstWorktree === null) {
+            yield* Effect.forEach(monitor.run.variants, (variant) =>
+              monitor.report({ variantId: variant.id, status: "succeeded", final: true }),
+            );
+            return;
+          }
+          const audit = yield* Effect.result(
+            runStageWithRetries(
+              auditStage,
+              firstWorktree,
+              `Compare the completed variants in ${monitor.run.variants
+                .map((variant) => variant.worktreePath)
+                .join(", ")}.`,
+              monitor.run.variants[0]!.id,
+            ),
+          );
+          if (Result.isFailure(audit) || !audit.success.completed) {
+            yield* Effect.forEach(monitor.run.variants, (variant) =>
+              monitor.report({
+                variantId: variant.id,
+                status: "failed",
+                output:
+                  Result.isSuccess(audit)
+                    ? audit.success.output
+                    : "The audit worker failed before returning a result.",
+                threadIds:
+                  Result.isSuccess(audit) && audit.success.threadId !== null
+                    ? [audit.success.threadId]
+                    : [],
+                error: "The audit stage did not complete successfully.",
+              }),
+            );
+            return;
+          }
+          const auditVariant = monitor.run.variants[0]!;
+          const auditCreatedAt = DateTime.formatIso(DateTime.nowUnsafe());
+          yield* Effect.forEach(
+            monitor.run.variants,
+            (variant, index) =>
+              monitor.report({
+                variantId: variant.id,
+                status: "succeeded",
+                stageId: auditStage.id,
+                stageCompleted: true,
+                ...(index === 0 && audit.success.threadId !== null
+                  ? { threadIds: [audit.success.threadId] }
+                  : {}),
+                ...(index === 0
+                  ? {
+                      comments: [
+                        {
+                          id: `${monitor.run.id}-audit-comment`,
+                          author: "Audit worker",
+                          body:
+                            audit.success.output || "Audit worker completed without a written report.",
+                          createdAt: auditCreatedAt,
+                          source: "agent" as const,
+                        },
+                      ],
+                      artifacts: [
+                        {
+                          id: `${monitor.run.id}-audit-report`,
+                          variantId: auditVariant.id,
+                          kind: "report" as const,
+                          label: "Audit report",
+                          path: null,
+                          url: null,
+                          storyId: null,
+                          sourceSha: auditVariant.sourceSha,
+                          createdAt: auditCreatedAt,
+                        },
+                      ],
+                    }
+                  : {}),
+              }),
+            { discard: true },
+          );
+          if (yield* monitor.isCancelled) return;
+          const runCheck = Effect.fn("TaskWorkspace.runCheck")(
+            function* (
+              stage: import("@t3tools/contracts").TaskWorkspaceStage,
+              cwd: string,
+              variantId: string,
+            ) {
+              const configuredCommand = stage.command?.trim();
+              if (configuredCommand !== undefined && configuredCommand !== "")
+                return yield* runCommandCheckWithRetries(stage, cwd);
+              const worker = yield* Effect.result(
+                runStageWithRetries(
+                  stage,
+                  cwd,
+                  `${stage.prompt}\n\nRun the check and end your response with exactly CHECK_RESULT: PASS or CHECK_RESULT: FAIL.`,
+                  variantId,
+                ),
+              );
+              if (Result.isFailure(worker)) {
+                return {
+                  threadId: null,
+                  completed: false,
+                  output: "Worker stage failed before completion.",
+                  exitCode: 1,
+                      attempt: 1,
+                };
+              }
+              const completed =
+                worker.success.completed && /(?:^|\n)CHECK_RESULT:\s*PASS\b/i.test(worker.success.output);
+              return {
+                ...worker.success,
+                completed,
+                output: completed
+                  ? worker.success.output
+                  : `${worker.success.output}\nWorker did not provide CHECK_RESULT: PASS.`,
+                exitCode: completed ? 0 : 1,
+                attempt: worker.success.attempt,
+              };
+            },
+          );
+          const checks = yield* Effect.forEach(monitor.run.variants, (variant) =>
+            Effect.forEach(checkStages, (stage) =>
+              (variant.worktreePath === null
+                ? Effect.succeed({
+                    threadId: null,
+                    completed: false,
+                    output: "No worktree was available.",
+                    exitCode: 1,
+                    attempt: 0,
+                  })
+                : runCheck(stage, variant.worktreePath, variant.id)),
+              {
+                concurrency: checkStages.some((stage) => stage.parallel)
+                  ? Math.min(checkStages.length, 5)
+                  : 1,
+              },
+            ),
+            { concurrency: Math.min(monitor.run.variants.length, 5) },
+          );
+          const checksPassed = checks.every((variantChecks) =>
+            variantChecks.every((result, index) => {
+              const stage = checkStages[index];
+              return stage?.required === false || result.completed;
+            }),
+          );
+          const checkThreadIds = (variantIndex: number) =>
+            checks[variantIndex]?.flatMap((result) => (result.threadId === null ? [] : [result.threadId])) ?? [];
+          const checkResults = (variantIndex: number) =>
+            checkStages.map((stage, stageIndex) => ({
+              id: `${monitor.run.id}-${monitor.run.variants[variantIndex]!.id}-${stage.id}`,
+              name: stage.name,
+              status:
+                checks[variantIndex]?.[stageIndex]?.completed === true
+                  ? ("passed" as const)
+                  : ("failed" as const),
+              command: stage.command,
+              exitCode: checks[variantIndex]?.[stageIndex]?.exitCode ?? null,
+              ...(checks[variantIndex]?.[stageIndex]?.attempt === undefined
+                ? {}
+                : { attempt: checks[variantIndex]![stageIndex]!.attempt }),
+              output: checks[variantIndex]?.[stageIndex]?.output ?? "Worker produced no output.",
+              startedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+              finishedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+            }));
+          if (!checksPassed) {
+            yield* Effect.forEach(monitor.run.variants, (variant, index) =>
+              monitor.report({
+                variantId: variant.id,
+                status: "failed",
+                ...(checkStages.at(-1)?.id === undefined ? {} : { stageId: checkStages.at(-1)!.id }),
+                stageCompleted: false,
+                threadIds: checkThreadIds(index),
+                checks: checkResults(index),
+                error: "One or more configured checks failed.",
+              }),
+            );
+            return;
+          }
+          if (yield* monitor.isCancelled) return;
+          yield* Effect.forEach(monitor.run.variants, (variant, index) =>
+            monitor.report({
+              variantId: variant.id,
+              status: "succeeded",
+              ...(checkStages.at(-1)?.id === undefined ? {} : { stageId: checkStages.at(-1)!.id }),
+              stageCompleted: true,
+              threadIds: checkThreadIds(index),
+              checks: checkResults(index),
+              final: true,
+            }),
+          );
+        },
+        (effect) =>
+          effect.pipe(
+            Effect.mapError((cause) =>
+              isTaskWorkspaceError(cause)
+                ? cause
+                : new TaskWorkspaceError({
+                    operation: "runScenario",
+                    message: "Could not monitor task worker threads.",
+                    cause,
+                  }),
+            ),
+          ),
+      );
+      const cancelVariants = Effect.fn("TaskWorkspace.cancelVariants")(
+        function* (cancel: { readonly projectId: ProjectId; readonly threadIds: ReadonlyArray<ThreadId> }) {
+          yield* Effect.forEach(
+            cancel.threadIds,
+            (threadId) =>
+              Effect.gen(function* () {
+                const snapshot = yield* threadManagement.getThreadSnapshot(threadId);
+                const active = ThreadManagementService.latestActiveRun(snapshot.projection);
+                if (active === undefined) return;
+                const uuid = yield* random.uuidV4();
+                yield* threadManagement.interruptThread({
+                  projectId: cancel.projectId,
+                  threadId,
+                  commandId: CommandId.make(`task-workspace-cancel:${uuid}`),
+                  runId: active.id,
+                  reason: "Task workspace run cancelled.",
+                });
+              }),
+            { concurrency: Math.min(cancel.threadIds.length, 5) },
+          );
+        },
+        (effect) =>
+          effect.pipe(
+            Effect.mapError(
+              (cause) =>
+                new TaskWorkspaceError({
+                  operation: "cancelRun",
+                  message: "Could not stop one or more task worker threads.",
+                  cause,
+                }),
+            ),
+          ),
+      );
+      const taskWorkspace = makeTaskWorkspaceService(workspaceFileSystem, {
+        backgroundSync: true,
+        jiraClientFor,
+        launchStorybook,
+        monitorRun,
+        cancelVariants,
+        ...(publishVariant === undefined ? {} : { publishVariant }),
+        ...(vcsDriverRegistryOption._tag === "None"
+          ? {}
+          : {
+              dispatchVariants: Effect.fn("TaskWorkspace.dispatchVariants")(
+                function* (input) {
+                  const vcs = yield* vcsDriverRegistryOption.value.resolve({
+                    cwd: input.workspaceRoot,
+                    requestedKind: "auto",
+                  });
+                  const head = yield* vcs.driver.execute({
+                    operation: "TaskWorkspace.resolveHead",
+                    cwd: input.workspaceRoot,
+                    args: ["rev-parse", "HEAD"],
+                  });
+                  const sourceSha = head.stdout.trim();
+                  if (sourceSha.length === 0) {
+                    return yield* new TaskWorkspaceError({
+                      operation: "runScenario",
+                      message: "The workspace has no resolvable HEAD commit.",
+                    });
+                  }
+                  const agentStages = input.task.scenario.stages.filter(
+                    (stage) => stage.kind === "agent",
+                  );
+                  const agentStage =
+                    agentStages.find((stage) => stage.dependsOn.length === 0) ?? agentStages[0];
+                  const provider = ProviderInstanceId.make(agentStage?.provider ?? "codex");
+                  const model = agentStage?.model ?? DEFAULT_MODEL;
+                  return yield* Effect.forEach(
+                    input.variants,
+                    (variant) =>
+                      Effect.gen(function* () {
+                        const uuid = yield* random.uuidV4();
+                        const launch = yield* threadLaunch.launch({
+                          commandId: CommandId.make(`task-workspace:${uuid}`),
+                          projectId: input.projectId,
+                          title: `${input.task.issue.key} · ${variant.label}`,
+                          modelSelection: { instanceId: provider, model },
+                          runtimeMode: "full-access",
+                          interactionMode: "default",
+                          workspaceStrategy: {
+                            type: "worktree",
+                            baseRef: sourceSha,
+                            startFromOrigin: false,
+                          },
+                          initialMessage: {
+                            text: [
+                              input.task.issue.summary,
+                              input.task.issue.description,
+                              agentStage?.prompt ??
+                                "Implement the task in this isolated worktree.",
+                              `Variant: ${variant.label}`,
+                              ...(agentStage?.skills.length
+                                ? [`Skills to use: ${agentStage.skills.join(", ")}`]
+                                : []),
+                              ...(agentStage?.connectors.length
+                                ? [`Connectors to use: ${agentStage.connectors.join(", ")}`]
+                                : []),
+                              ...(agentStage?.rules ?? []),
+                            ]
+                              .filter(Boolean)
+                              .join("\n\n"),
+                            attachments: [],
+                          },
+                          createdBy: "agent",
+                          creationSource: "mcp",
+                        });
+                        const entry = {
+                          variantId: variant.id,
+                          threadId: launch.threadId,
+                          worktreePath: launch.projection.thread.worktreePath,
+                          sourceSha,
+                        };
+                        if (input.onVariant !== undefined) yield* input.onVariant(entry);
+                        return entry;
+                      }),
+                    { concurrency: Math.min(input.variants.length, 5) },
+                  );
+                },
+                (effect) =>
+                  effect.pipe(
+                    Effect.mapError((cause) =>
+                      isTaskWorkspaceError(cause)
+                        ? cause
+                        : new TaskWorkspaceError({
+                            operation: "runScenario",
+                            message: "Could not start the task scenario variants.",
+                            cause,
+                          }),
+                    ),
+                  ),
+              ),
+            }),
+      });
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+      const serverEnvironmentId = yield* serverEnvironment.getEnvironmentId;
+      // Register persisted task sources at server startup so auto-start does not
+      // depend on a browser opening /tasks after a restart.
+      yield* Effect.forEach(
+        yield* projectService.listShells(),
+        (project) =>
+          taskWorkspace
+            .read({
+              environmentId: serverEnvironmentId,
+              projectId: project.id,
+              workspaceRoot: project.workspaceRoot,
+            })
+            .pipe(Effect.ignore),
+        { concurrency: 4, discard: true },
+      );
+      // Re-scan project shells so projects created after startup also receive a
+      // background task watcher without waiting for a browser read.
+      yield* Effect.forkDetach(
+        Effect.gen(function* () {
+          while (true) {
+            yield* Effect.sleep(Duration.seconds(30));
+            yield* Effect.forEach(
+              yield* projectService.listShells(),
+              (project) =>
+                taskWorkspace
+                  .read({
+                    environmentId: serverEnvironmentId,
+                    projectId: project.id,
+                    workspaceRoot: project.workspaceRoot,
+                  })
+                  .pipe(Effect.ignore),
+              { concurrency: 4, discard: true },
+            );
+          }
+        }),
+      );
+      // oxlint-disable-next-line t3code/prefer-effect-fn -- generic input is preserved for both read and command RPCs
+      const validateTaskWorkspaceScope = <
+        T extends { environmentId: EnvironmentId; projectId: ProjectId; workspaceRoot: string }
+      >(
+        input: T,
+      ) =>
+        Effect.gen(function* () {
+          if (input.environmentId !== serverEnvironmentId) {
+            return yield* new TaskWorkspaceError({
+              operation: "scope",
+              message: "The task workspace environment does not match this server.",
+            });
+          }
+          return yield* projectService.getById(input.projectId);
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              isTaskWorkspaceError(cause)
+                ? cause
+                : new TaskWorkspaceError({
+                    operation: "scope",
+                    message: "The task workspace project could not be resolved.",
+                    cause,
+                  }),
+          ),
+          Effect.flatMap((projectOption) =>
+            Option.match(projectOption, {
+              onNone: () =>
+                Effect.fail(
+                  new TaskWorkspaceError({
+                    operation: "scope",
+                    message: "The selected task workspace project does not exist.",
+                  }),
+                ),
+              onSome: (project) =>
+                project.workspaceRoot === input.workspaceRoot
+                  ? Effect.succeed(input)
+                  : Effect.fail(
+                      new TaskWorkspaceError({
+                        operation: "scope",
+                        message: "The task workspace path does not belong to this project.",
+                      }),
+                    ),
+            }),
+          ),
+        );
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
       yield* Effect.addFinalizer(() =>
@@ -1995,6 +3416,66 @@ export const layerWsRpc = (
         return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
       });
 
+      // Design packages use a read/validate/write transaction; serialize it so two clients cannot
+      // both validate the same revision and overwrite one another's accepted changes.
+      const syncDesignDocument = Effect.fn("ws.designSync")(function* (input: {
+        readonly cwd: string;
+        readonly relativePath: string;
+        readonly request: Parameters<typeof applyDesignSyncRequest>[1];
+      }) {
+        const existing = yield* workspaceFileSystem.readFile({ ...input, allowMissing: true }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProjectReadFileError({
+                cwd: input.cwd,
+                relativePath: input.relativePath,
+                ...projectFileFailureContext(cause),
+                cause,
+              }),
+          ),
+        );
+        const state = parseDesignServerState(existing.contents, input.request.documentId);
+        if (state === null) {
+          return yield* new DesignPackageMalformedError({
+            cwd: input.cwd,
+            relativePath: input.relativePath,
+            message: "The Design package is malformed and was left unchanged.",
+          });
+        }
+        const applied = applyDesignSyncRequest(state, input.request);
+        if (applied.result._tag === "accepted") {
+          yield* workspaceFileSystem
+            .writeFile({
+              cwd: input.cwd,
+              relativePath: input.relativePath,
+              contents: encodeDesignServerState({
+                documentId: applied.state.documentId,
+                revision: applied.state.revision,
+                nodes: Object.fromEntries(applied.state.nodes),
+                assetIds: [...applied.state.assetIds],
+                ...(applied.state.assetPayloads === undefined
+                  ? {}
+                  : { assetPayloads: [...applied.state.assetPayloads.values()] }),
+                ...(applied.state.snapshot === undefined
+                  ? {}
+                  : { snapshot: applied.state.snapshot }),
+              }),
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectWriteFileError({
+                    cwd: input.cwd,
+                    relativePath: input.relativePath,
+                    ...projectFileFailureContext(cause),
+                    cause,
+                  }),
+              ),
+            );
+        }
+        return applied.result;
+      });
+
       const handlers = ServerWsRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
@@ -2275,6 +3756,28 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
+        [WS_METHODS.taskWorkspaceRead]: (input) =>
+          Stream.fromEffect(validateTaskWorkspaceScope(input).pipe(Effect.flatMap(taskWorkspace.read))),
+        [WS_METHODS.taskWorkspaceCommand]: (input) =>
+          validateTaskWorkspaceScope(input).pipe(Effect.flatMap(taskWorkspace.command)),
+        [WS_METHODS.designRead]: (input) =>
+          workspaceFileSystem.readFile({ ...input, allowMissing: true }).pipe(
+            Effect.map((result) => ({
+              found: result.exists === true,
+              contents: result.exists === true ? result.contents : null,
+            })),
+            Effect.mapError(
+              (cause) =>
+                new ProjectReadFileError({
+                  cwd: input.cwd,
+                  relativePath: input.relativePath,
+                  ...projectFileFailureContext(cause),
+                  cause,
+                }),
+            ),
+          ),
+        [WS_METHODS.designSync]: (input) =>
+          DESIGN_SYNC_SEMAPHORE.withPermits(1)(syncDesignDocument(input)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),
         [WS_METHODS.scheduledTasksSetEnabled]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
@@ -3157,6 +4660,16 @@ export const layerWsRpc = (
         [WS_METHODS.previewClearProfile]: (input) => serverBrowser.clearProfile(input.profileId),
         [WS_METHODS.previewReportProfiles]: (input) => reportProfiles(input),
         [WS_METHODS.previewReportStatus]: (input) => previewManager.reportStatus(input),
+        [WS_METHODS.previewCaptureDesignSnapshot]: (input) =>
+          serverBrowser
+            .captureDesignSnapshot(input)
+            .pipe(
+              Effect.mapError((cause) =>
+                isServerBrowserTabNotFound(cause)
+                  ? new PreviewSessionLookupError({ threadId: input.threadId, tabId: input.tabId })
+                  : cause,
+              ),
+            ),
         [WS_METHODS.subscribePreviewEvents]: (_input) => previewManager.events,
         [WS_METHODS.deviceConfigure]: (input) => deviceService.configure(input),
         [WS_METHODS.deviceTestHost]: (input) => deviceService.testHost(input),

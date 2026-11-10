@@ -44,6 +44,7 @@ export function HtmlRenderFrame(props: {
     fileName,
     mimeType: "text/html",
     disposition: "inline" as const,
+    renderIntent: "html-render" as const,
   };
   // The frame keeps the first URL it loads, so later mints do not reload the page.
   const [loaded, setLoaded] = useState<{ src: string; expiresAt: number } | null>(null);

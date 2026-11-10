@@ -22,6 +22,7 @@ import {
   matchesScheduledTaskScope,
   scheduleFromDraft,
   taskToDraft,
+  validateScheduledTasksSearch,
 } from "./scheduledTasksSettings.logic";
 
 const laptopId = EnvironmentId.make("laptop");
@@ -85,6 +86,22 @@ const tasks = [first, second, third, other, sameIdElsewhere].map((project, index
 }));
 
 describe("scheduled task settings scope", () => {
+  it("preserves automation create and return routing flags", () => {
+    expect(
+      validateScheduledTasksSearch({
+        environmentId: laptopId,
+        create: 1,
+        returnTo: "automations",
+      }),
+    ).toEqual({ environmentId: laptopId, create: true, returnTo: "automations" });
+    expect(
+      validateScheduledTasksSearch({
+        returnEnvironmentId: laptopId,
+        returnTaskId: "task-1",
+      }),
+    ).toEqual({ returnEnvironmentId: laptopId, returnTaskId: ScheduledTaskId.make("task-1") });
+  });
+
   it.each<{ search: SettingsScopeSearch; expected: string[] }>([
     { search: {}, expected: ["task-0", "task-1", "task-2", "task-3", "task-4"] },
     { search: { machine: laptopId }, expected: ["task-0", "task-1"] },

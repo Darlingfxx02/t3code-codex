@@ -273,6 +273,8 @@ import {
   ConfiguredLocalServerUrls,
   PreviewCloseInput,
   PreviewError,
+  PreviewCaptureDesignSnapshotError,
+  PreviewSessionLookupError,
   PreviewEvent,
   PreviewListInput,
   PreviewListResult,
@@ -286,6 +288,8 @@ import {
   PreviewResizeInput,
   PreviewAdjustInput,
   PreviewSessionSnapshot,
+  PreviewCaptureDesignSnapshotInput,
+  PreviewDesignCapture,
 } from "./preview.ts";
 import {
   DeviceActionInput,
@@ -376,6 +380,12 @@ import {
   ScheduledTaskUpsertInput,
   ScheduledTaskMutationResult,
 } from "./scheduledTask.ts";
+import {
+  TaskWorkspaceCommandInput,
+  TaskWorkspaceError,
+  TaskWorkspaceReadInput,
+  TaskWorkspaceSnapshot,
+} from "./taskWorkspace.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
   ProjectCloneActionInput,
@@ -404,6 +414,13 @@ import {
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
+import {
+  DesignPackageMalformedError,
+  DesignReadInput,
+  DesignReadResult,
+  DesignSyncInput,
+  DesignSyncResult,
+} from "./design.ts";
 
 export const WS_METHODS = {
   projectsListEntries: "projects.listEntries",
@@ -482,6 +499,7 @@ export const WS_METHODS = {
   previewClearProfile: "preview.clearProfile",
   previewReportProfiles: "preview.reportProfiles",
   previewReportStatus: "preview.reportStatus",
+  previewCaptureDesignSnapshot: "preview.captureDesignSnapshot",
   previewStopLocalServer: "preview.stopLocalServer",
 
   deviceConfigure: "device.configure",
@@ -548,6 +566,10 @@ export const WS_METHODS = {
   guestShareCreate: "guestShare.create",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
+  designRead: "design.read",
+  designSync: "design.sync",
+  taskWorkspaceRead: "taskWorkspace.read",
+  taskWorkspaceCommand: "taskWorkspace.command",
 
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -1633,6 +1655,16 @@ const WsPreviewReportStatusRpc = Rpc.make(WS_METHODS.previewReportStatus, {
   error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsPreviewCaptureDesignSnapshotRpc = Rpc.make(WS_METHODS.previewCaptureDesignSnapshot, {
+  payload: PreviewCaptureDesignSnapshotInput,
+  success: PreviewDesignCapture,
+  error: Schema.Union([
+    PreviewCaptureDesignSnapshotError,
+    PreviewSessionLookupError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsSubscribePreviewEventsRpc = Rpc.make(WS_METHODS.subscribePreviewEvents, {
   payload: Schema.Struct({}),
   success: PreviewEvent,
@@ -1906,6 +1938,36 @@ const WsScheduledTasksSubscribeRpc = Rpc.make(WS_METHODS.scheduledTasksSubscribe
   stream: true,
 });
 
+const WsDesignReadRpc = Rpc.make(WS_METHODS.designRead, {
+  payload: DesignReadInput,
+  success: DesignReadResult,
+  error: Schema.Union([ProjectReadFileError, EnvironmentAuthorizationError]),
+});
+
+const WsDesignSyncRpc = Rpc.make(WS_METHODS.designSync, {
+  payload: DesignSyncInput,
+  success: DesignSyncResult,
+  error: Schema.Union([
+    ProjectReadFileError,
+    ProjectWriteFileError,
+    DesignPackageMalformedError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsTaskWorkspaceReadRpc = Rpc.make(WS_METHODS.taskWorkspaceRead, {
+  payload: TaskWorkspaceReadInput,
+  success: TaskWorkspaceSnapshot,
+  error: Schema.Union([TaskWorkspaceError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsTaskWorkspaceCommandRpc = Rpc.make(WS_METHODS.taskWorkspaceCommand, {
+  payload: TaskWorkspaceCommandInput,
+  success: TaskWorkspaceSnapshot,
+  error: Schema.Union([TaskWorkspaceError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksUpsertRpc = Rpc.make(WS_METHODS.scheduledTasksUpsert, {
   payload: ScheduledTaskUpsertInput,
   success: ScheduledTaskMutationResult,
@@ -2045,6 +2107,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRefreshUsageRatesRpc,
   WsServerSignalProcessRpc,
   WsScheduledTasksSubscribeRpc,
+  WsDesignReadRpc,
+  WsDesignSyncRpc,
+  WsTaskWorkspaceReadRpc,
+  WsTaskWorkspaceCommandRpc,
   WsScheduledTasksUpsertRpc,
   WsScheduledTasksSetEnabledRpc,
   WsScheduledTasksDeleteRpc,
@@ -2160,6 +2226,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewClearProfileRpc,
   WsPreviewReportProfilesRpc,
   WsPreviewReportStatusRpc,
+  WsPreviewCaptureDesignSnapshotRpc,
   WsSubscribePreviewEventsRpc,
   WsPreviewStopLocalServerRpc,
   WsSubscribeDiscoveredLocalServersRpc,

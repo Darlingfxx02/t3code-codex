@@ -1,9 +1,5 @@
 import { FolderPlusIcon, SearchIcon, SquarePenIcon } from "lucide-react";
-import {
-  type ComponentProps,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-} from "react";
+import { type ComponentProps, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { SidebarMenuButton } from "../ui/sidebar";
@@ -46,9 +42,7 @@ export function SidebarThreadHeader({
         <>
           <SidebarHeaderIconButton
             label="Global search"
-            tooltip={
-              searchShortcutLabel ? `Search (${searchShortcutLabel})` : "Search"
-            }
+            tooltip={searchShortcutLabel ? `Search (${searchShortcutLabel})` : "Search"}
             onClick={onSearch}
           >
             <SearchIcon />
@@ -64,9 +58,7 @@ export function SidebarThreadHeader({
                   showProjectPickerHint ? (
                     <span className="flex flex-col gap-0.5">
                       <span>{newThreadLabel}</span>
-                      <span className="text-muted-foreground">
-                        Choose a project: Shift+click
-                      </span>
+                      <span className="text-muted-foreground">Choose a project: Shift+click</span>
                     </span>
                   ) : (
                     newThreadLabel
@@ -113,10 +105,7 @@ export function SidebarHeaderIconButton({
             type="button"
             aria-label={label}
             {...rest}
-            className={cn(
-              "relative size-7 shrink-0 [-webkit-app-region:no-drag]",
-              className,
-            )}
+            className={cn("relative size-7 shrink-0 [-webkit-app-region:no-drag]", className)}
           />
         }
       >

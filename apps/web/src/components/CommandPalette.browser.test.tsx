@@ -25,10 +25,7 @@ function setup(
     threads?: ReadonlyArray<Thread>;
   } = {},
 ) {
-  useCommandPaletteStore.setState(
-    useCommandPaletteStore.getInitialState(),
-    true,
-  );
+  useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
   entities.projects = state.projects ?? [];
   entities.threads = state.threads ?? [];
 }
@@ -97,8 +94,6 @@ describe("CommandPalette open intents", () => {
     openCommandPalette({ query: "Acme" });
     await page.getByRole("option", { name: /Acme/ }).first().click();
 
-    await vi.waitFor(() =>
-      expect(screen.router?.state.location.pathname).toBe("/local/parent"),
-    );
+    await vi.waitFor(() => expect(screen.router?.state.location.pathname).toBe("/local/parent"));
   });
 });

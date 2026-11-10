@@ -1,11 +1,38 @@
-import { useNavigate, type AnyRouter } from "@tanstack/react-router";
+import { useLocation, useNavigate, type AnyRouter } from "@tanstack/react-router";
 
 import { GUEST_PAGE_PATH } from "../../guestPage";
 import { withoutAssistantCitationHash } from "../../lib/assistantCitationNavigation";
+import { validateScheduledTasksSearch } from "../settings/scheduledTasksSettings.logic";
 
-/** Settings and Usage open as modals over the last main-app view. */
+export function isSettingsPage(pathname: string) {
+  return pathname === "/settings" || pathname.startsWith("/settings/");
+}
+
+export function isAutomationsPage(pathname: string) {
+  return pathname === "/automations";
+}
+
+export function isDesignPage(pathname: string) {
+  return pathname === "/design";
+}
+
+export function isTasksPage(pathname: string) {
+  return pathname === "/tasks";
+}
+
+export function workspaceSidebarMode(
+  pathname: string,
+): "thread" | "settings" | "automations" | "design" | "tasks" {
+  if (isSettingsPage(pathname)) return "settings";
+  if (isAutomationsPage(pathname)) return "automations";
+  if (isDesignPage(pathname)) return "design";
+  if (isTasksPage(pathname)) return "tasks";
+  return "thread";
+}
+
+/** Usage is the remaining overlay page; Settings and Automations use the app shell. */
 export function isAppModalPage(pathname: string) {
-  return pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/usage";
+  return pathname === "/usage";
 }
 
 export function isSidebarUtilityPage(pathname: string) {
@@ -20,14 +47,22 @@ const SHELL_LESS_PATHS = new Set(["/pair", "/connect", "/connect-agent", GUEST_P
 let mainAppHref: string | null = null;
 let appModalReturnHref: string | null = null;
 
-/** Remembers where Settings, Usage, and the utility pages lead back to. */
+/** Remembers where modal and utility pages lead back to. */
 export function startMainAppLocationTracking(router: AnyRouter): () => void {
   const record = () => {
     const { pathname } = router.state.location;
     if (isAppModalPage(pathname) || SHELL_LESS_PATHS.has(pathname)) return;
     const href = withoutAssistantCitationHash(router.state.location.href);
     appModalReturnHref = href;
-    if (!isSidebarUtilityPage(pathname)) mainAppHref = href;
+    if (
+      !isAppModalPage(pathname) &&
+      !isSettingsPage(pathname) &&
+      !isAutomationsPage(pathname) &&
+      !isDesignPage(pathname) &&
+      !isTasksPage(pathname)
+    ) {
+      if (!isSidebarUtilityPage(pathname)) mainAppHref = href;
+    }
   };
   record();
   return router.subscribe("onResolved", record);
@@ -38,8 +73,32 @@ export function useNavigateToMainApp() {
   return () => navigate({ href: mainAppHref ?? "/" });
 }
 
-/** Leaves Settings or Usage for the page that opened it. */
+/** Leaves a modal page for the page that opened it. */
 export function useCloseAppModal() {
   const navigate = useNavigate();
-  return () => navigate({ href: appModalReturnHref ?? mainAppHref ?? "/" });
+  const returnTo = useLocation({
+    select: (location) =>
+      typeof location.search === "object" && location.search !== null
+        ? (location.search as { readonly returnTo?: string }).returnTo
+        : undefined,
+  });
+  const automationSearch = useLocation({
+    select: (location) => {
+      if (typeof location.search !== "object" || location.search === null) return null;
+      const search = validateScheduledTasksSearch(location.search as Record<string, unknown>);
+      if (search.returnTo !== "automations") return null;
+      return {
+        ...((search.returnEnvironmentId ?? search.environmentId)
+          ? { environmentId: search.returnEnvironmentId ?? search.environmentId }
+          : {}),
+        ...((search.returnTaskId ?? search.taskId)
+          ? { taskId: search.returnTaskId ?? search.taskId }
+          : {}),
+      };
+    },
+  });
+  return () =>
+    returnTo === "automations" && automationSearch !== null
+      ? navigate({ to: "/automations", search: automationSearch })
+      : navigate({ href: appModalReturnHref ?? mainAppHref ?? "/" });
 }

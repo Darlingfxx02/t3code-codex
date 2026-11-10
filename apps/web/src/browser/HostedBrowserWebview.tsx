@@ -307,7 +307,12 @@ export function HostedBrowserWebview(props: {
     <div
       ref={wrapperRef}
       className="fixed overflow-hidden bg-muted/35"
-      style={{ ...wrapperStyle, overscrollBehavior: "contain" }}
+      inert={presentation.fitSourceContent}
+      style={{
+        ...wrapperStyle,
+        pointerEvents: presentation.fitSourceContent ? "none" : wrapperStyle.pointerEvents,
+        overscrollBehavior: "contain",
+      }}
       onScroll={syncContentPresentation}
       data-preview-rendering={renderingActive ? "active" : "suspended"}
       data-preview-viewport={runtimeTabId}

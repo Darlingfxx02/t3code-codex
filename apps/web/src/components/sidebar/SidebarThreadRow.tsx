@@ -1002,8 +1002,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     <SidebarThreadTitle
       title={thread.title}
       className={cn(
-        "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
-        shouldRecede ? "font-normal" : "font-medium",
+        "min-w-0 flex-1 text-start text-sm font-normal transition-opacity motion-reduce:transition-none",
         titleColorClassName,
         isRegeneratingTitle && "opacity-55",
       )}

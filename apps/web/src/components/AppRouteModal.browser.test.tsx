@@ -13,10 +13,10 @@ describe("AppRouteModal", () => {
   it("commits a focused field when Esc closes it", async () => {
     const onCommit = vi.fn();
     await using _screen = await render(
-      <AppRouteModal label="Settings">
+      <AppRouteModal label="Usage">
         <CommitOnBlurField onCommit={onCommit} />
       </AppRouteModal>,
-      { router: "/settings/general" },
+      { router: "/usage" },
     );
 
     await page.getByRole("textbox", { name: "Instructions" }).fill("Keep titles short");

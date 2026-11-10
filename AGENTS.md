@@ -197,6 +197,9 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
 - `packages/client-runtime` - client code shared by web and mobile.
 - `.repos/` - vendored read-only references. Prefer their patterns over invented ones. Never edit or import from them. Sync with `vpr sync:repos` when bumping the matching dependency. If it is missing (sparse checkout), read a file with `git show origin/main:.repos/<path>`.
 
+Design workspace and Code Quality work follow the architecture and evidence
+boundaries in [docs/internals/design-workspace-and-code-quality.md](docs/internals/design-workspace-and-code-quality.md). Read it before changing the Design sidebar, canvas/document format, Preview-to-canvas conversion, quality scenarios, or council review behavior.
+
 ## Taste
 
 - Complexity belongs at the adapter boundary. Orchestration stays pure, UI stays dumb.

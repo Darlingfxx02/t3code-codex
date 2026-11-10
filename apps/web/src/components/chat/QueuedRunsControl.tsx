@@ -509,7 +509,7 @@ function QueuedMessage(props: {
                 tone="muted"
                 render={
                   <Link
-                    to="/settings/scheduled-tasks"
+                    to="/automations"
                     search={{ environmentId: props.environmentId, taskId: scheduledTaskId }}
                   />
                 }

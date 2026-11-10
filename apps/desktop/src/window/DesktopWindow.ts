@@ -39,8 +39,8 @@ import { makeQuitShortcutHandler } from "./QuitHold.ts";
 import { copyContextMenuImage } from "./ContextMenuImage.ts";
 
 const TITLEBAR_HEIGHT = 40;
-// Match --workspace-topbar-height in apps/web/src/index.css; native macOS buttons stay 14 points at any zoom.
-const MACOS_WORKSPACE_TOPBAR_HEIGHT = 52;
+// Match --workspace-chrome-height in apps/web/src/index.css; native macOS buttons stay 14 points at any zoom.
+const MACOS_WORKSPACE_CHROME_HEIGHT = 48;
 const MACOS_WINDOW_BUTTON_RADIUS = 7;
 
 function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
@@ -48,7 +48,7 @@ function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
   window.setWindowButtonPosition({
     x: 16,
     y: Math.round(
-      (MACOS_WORKSPACE_TOPBAR_HEIGHT * window.webContents.getZoomFactor()) / 2 -
+      (MACOS_WORKSPACE_CHROME_HEIGHT * window.webContents.getZoomFactor()) / 2 -
         MACOS_WINDOW_BUTTON_RADIUS,
     ),
   });
@@ -241,7 +241,7 @@ function getWindowTitleBarOptions(
       titleBarStyle: "hiddenInset",
       trafficLightPosition: {
         x: 16,
-        y: MACOS_WORKSPACE_TOPBAR_HEIGHT / 2 - MACOS_WINDOW_BUTTON_RADIUS,
+        y: MACOS_WORKSPACE_CHROME_HEIGHT / 2 - MACOS_WINDOW_BUTTON_RADIUS,
       },
     };
   }

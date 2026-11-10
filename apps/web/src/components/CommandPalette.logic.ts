@@ -42,21 +42,17 @@ export function buildLinkedThreadActionItems(
   input: CommandPaletteLinkedThreads & {
     query: string;
     icon: ReactNode;
-    runThread: (
-      thread: Pick<SidebarThreadSummary, "environmentId" | "id">,
-    ) => Promise<void>;
+    runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>;
   },
 ): CommandPaletteActionItem[] {
   return input.threads.map((thread) => ({
     kind: "action",
     value: `thread:${input.environmentId}:${thread.id}`,
     title: thread.title || "Untitled thread",
-    description:
-      thread.archivedAt === null ? "Linked thread" : "Archived thread",
+    description: thread.archivedAt === null ? "Linked thread" : "Archived thread",
     searchTerms: [input.query, thread.title],
     icon: input.icon,
-    run: () =>
-      input.runThread({ environmentId: input.environmentId, id: thread.id }),
+    run: () => input.runThread({ environmentId: input.environmentId, id: thread.id }),
   }));
 }
 
@@ -117,9 +113,7 @@ export function reduceCommandPaletteUiState(
   action: CommandPaletteUiAction,
 ): CommandPaletteUiState {
   const { session } = state;
-  const openWithIntent = (
-    openIntent: CommandPaletteOpenIntent,
-  ): CommandPaletteUiState => ({
+  const openWithIntent = (openIntent: CommandPaletteOpenIntent): CommandPaletteUiState => ({
     open: true,
     mode: "command",
     openIntent,
@@ -149,18 +143,14 @@ export function reduceCommandPaletteUiState(
             mode: "command",
             openIntent: null,
             session,
-            ...(state.parentSearch
-              ? { restoredSearch: state.parentSearch }
-              : {}),
+            ...(state.parentSearch ? { restoredSearch: state.parentSearch } : {}),
           }
         : state;
     case "OpenSearch":
       return openWithIntent({
         kind: "search",
         query: action.query,
-        ...(action.linkedThreads
-          ? { linkedThreads: action.linkedThreads }
-          : {}),
+        ...(action.linkedThreads ? { linkedThreads: action.linkedThreads } : {}),
       });
     case "OpenAddProject":
       return openWithIntent({ kind: "add-project" });
@@ -182,8 +172,7 @@ export function resolveAddProjectEntry(
   defaultEnvironmentId: EnvironmentId | null,
 ): AddProjectEntry {
   if (options.length === 0) return { kind: "connect-environment" };
-  if (options.length > 1 || defaultEnvironmentId === null)
-    return { kind: "choose-environment" };
+  if (options.length > 1 || defaultEnvironmentId === null) return { kind: "choose-environment" };
   return { kind: "choose-source", environmentId: defaultEnvironmentId };
 }
 
@@ -239,9 +228,7 @@ export interface CommandPaletteSubmenuItem extends CommandPaletteItem {
 export interface CommandPaletteGroup {
   readonly value: string;
   readonly label: string;
-  readonly items: ReadonlyArray<
-    CommandPaletteActionItem | CommandPaletteSubmenuItem
-  >;
+  readonly items: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
 }
 
 export interface CommandPaletteView {
@@ -253,10 +240,7 @@ export interface CommandPaletteView {
 // Child search unmounts the palette; retain search data without its view closures.
 export interface CommandPaletteReturnContext {
   readonly query: string;
-  readonly linkedThreadSearch: Extract<
-    CommandPaletteOpenIntent,
-    { kind: "search" }
-  > | null;
+  readonly linkedThreadSearch: Extract<CommandPaletteOpenIntent, { kind: "search" }> | null;
 }
 
 export interface CommandPaletteSearchState {
@@ -267,9 +251,7 @@ export interface CommandPaletteSearchState {
   }>;
 }
 
-export function createCommandPaletteSearchState(
-  query = "",
-): CommandPaletteSearchState {
+export function createCommandPaletteSearchState(query = ""): CommandPaletteSearchState {
   return { query, views: [] };
 }
 
@@ -287,16 +269,11 @@ export function reduceCommandPaletteSearchState(
     case "push":
       return {
         query: action.view.initialQuery ?? "",
-        views: [
-          ...state.views,
-          { view: action.view, parentQuery: state.query },
-        ],
+        views: [...state.views, { view: action.view, parentQuery: state.query }],
       };
     case "back": {
       const parent = state.views.at(-1);
-      return parent
-        ? { query: parent.parentQuery, views: state.views.slice(0, -1) }
-        : state;
+      return parent ? { query: parent.parentQuery, views: state.views.slice(0, -1) } : state;
     }
     case "reset":
       return createCommandPaletteSearchState(action.query);
@@ -317,9 +294,7 @@ export type CommandPaletteRow =
       readonly itemIndex: number | null;
     };
 
-export function buildCommandPaletteRows(
-  groups: ReadonlyArray<CommandPaletteGroup>,
-) {
+export function buildCommandPaletteRows(groups: ReadonlyArray<CommandPaletteGroup>) {
   const rows: CommandPaletteRow[] = [];
   const itemValues: string[] = [];
   const rowIndexByItemIndex: number[] = [];
@@ -374,30 +349,19 @@ export function enumerateCommandPaletteItems(
   });
 }
 
-export type CommandPaletteMode =
-  | "root"
-  | "root-browse"
-  | "submenu"
-  | "submenu-browse";
+export type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-browse";
 
 export type CommandPaletteProject = Project & { readonly displayName: string };
 
 export function buildCommandPaletteProjectMetadata(input: {
-  readonly projects: ReadonlyArray<
-    Pick<Project, "environmentId" | "title" | "workspaceRoot">
-  >;
-  readonly locationByEnvironmentId: ReadonlyMap<
-    EnvironmentId,
-    { readonly label: string }
-  >;
+  readonly projects: ReadonlyArray<Pick<Project, "environmentId" | "title" | "workspaceRoot">>;
+  readonly locationByEnvironmentId: ReadonlyMap<EnvironmentId, { readonly label: string }>;
 }) {
   const searchTerms: string[] = [];
   const environmentLabels = new Set<string>();
 
   for (const project of input.projects) {
-    const label =
-      input.locationByEnvironmentId.get(project.environmentId)?.label ??
-      "Remote";
+    const label = input.locationByEnvironmentId.get(project.environmentId)?.label ?? "Remote";
     searchTerms.push(project.title, project.workspaceRoot, label);
     environmentLabels.add(label);
   }
@@ -429,9 +393,7 @@ export function buildProjectActionItems(input: {
       title: project.displayName,
       description: input.renderDescription?.(project) ?? project.workspaceRoot,
       icon: input.icon(project),
-      ...(input.shortcutCommand !== undefined
-        ? { shortcutCommand: input.shortcutCommand }
-        : {}),
+      ...(input.shortcutCommand !== undefined ? { shortcutCommand: input.shortcutCommand } : {}),
       ...(pin ? { pin } : {}),
       run: async () => {
         await input.runProject(project);
@@ -457,29 +419,20 @@ export type BuildThreadActionItemsThread = Pick<
   Partial<
     Pick<
       SidebarThreadSummary,
-      | "pullRequests"
-      | "linkedPullRequest"
-      | "branchPullRequest"
-      | "opens"
-      | "latestUserMessageAt"
+      "pullRequests" | "linkedPullRequest" | "branchPullRequest" | "opens" | "latestUserMessageAt"
     >
   > & {
     updatedAt: string;
   };
 
-export function buildThreadActionItems<
-  TThread extends BuildThreadActionItemsThread,
->(input: {
+export function buildThreadActionItems<TThread extends BuildThreadActionItemsThread>(input: {
   threads: ReadonlyArray<TThread>;
   activeThread?: Pick<Thread, "environmentId" | "id">;
   projectByKey: ReadonlyMap<string, Pick<Project, "title">>;
   icon: ReactNode;
   renderLeadingContent?: (thread: TThread) => ReactNode;
   renderTrailingContent?: (thread: TThread) => ReactNode;
-  renderDescription?: (
-    thread: TThread,
-    meta: { projectTitle: string | undefined },
-  ) => ReactNode;
+  renderDescription?: (thread: TThread, meta: { projectTitle: string | undefined }) => ReactNode;
   runThread: (thread: TThread) => Promise<void>;
   /** Makes the environment searchable; pass it only with two or more environments. */
   environmentLabelOf?: (thread: TThread) => string | null;
@@ -577,8 +530,7 @@ function scorePaletteItem(
   now: number,
   options: { readonly typos: boolean },
 ) {
-  if (item.threadSearch)
-    return scoreThreadSearch(normalizedQuery, item.threadSearch, now, options);
+  if (item.threadSearch) return scoreThreadSearch(normalizedQuery, item.threadSearch, now, options);
   // The title names the item; search terms are keywords. Ranges index the
   // first term, so they only highlight a title that is that term.
   const name = typeof item.title === "string" ? item.title : item.searchTitle;
@@ -679,24 +631,20 @@ export function filterCommandPaletteGroups(input: {
     searchableGroups.map((group) => ({ group, items: group.items })),
     (item, options) => rankPaletteItem(item, normalizedQuery, now, options),
   );
-  const threadsMatch = ranked.some(
-    ({ group }) => group.value === "threads-search",
-  );
+  const threadsMatch = ranked.some(({ group }) => group.value === "threads-search");
   const groups = ranked.map(({ group, ranked }): CommandPaletteGroup => {
     // Secondary items stay below the rest; the sort is stable, so score order holds.
     const limit =
       group.value === "threads-search"
         ? PALETTE_THREAD_LIMIT
-        : group.value === "nested-search" ||
-            (searchesEverything && threadsMatch)
+        : group.value === "nested-search" || (searchesEverything && threadsMatch)
           ? PALETTE_SECONDARY_LIMIT
           : ranked.length;
     // Hints are built only for the rows shown.
     const items = ranked
       .toSorted(
         (left, right) =>
-          Number(left.item.secondary ?? false) -
-          Number(right.item.secondary ?? false),
+          Number(left.item.secondary ?? false) - Number(right.item.secondary ?? false),
       )
       .slice(0, limit)
       .map(({ item, match }) => {
@@ -709,13 +657,9 @@ export function filterCommandPaletteGroups(input: {
   });
 
   if (!searchesEverything) return groups;
-  const listed = new Set(
-    groups.flatMap((group) => group.items.map((item) => item.value)),
-  );
+  const listed = new Set(groups.flatMap((group) => group.items.map((item) => item.value)));
   // The items arrive cut to what the palette shows; see `nextShownOrder`.
-  const messageItems = (input.threadMessageItems ?? []).filter(
-    (item) => !listed.has(item.value),
-  );
+  const messageItems = (input.threadMessageItems ?? []).filter((item) => !listed.has(item.value));
   return messageItems.length === 0
     ? groups
     : [
@@ -738,8 +682,7 @@ export function buildNestedSearchItems(
   const topLevelNames = new Set(items.map(nameOf));
   const foldedQuery = foldSearchQuery(query);
   return items.flatMap((parent) => {
-    if (parent.kind !== "submenu" || typeof parent.title !== "string")
-      return [];
+    if (parent.kind !== "submenu" || typeof parent.title !== "string") return [];
     const stem = parent.title.replace(/(\.\.\.|…)$/u, "");
     // A query that only names the submenu ("new thread in") wants the submenu row itself.
     if (foldSearchQuery(stem).startsWith(foldedQuery)) return [];
@@ -807,24 +750,14 @@ export function filterPinnedBrowseEntries(input: {
   caseSensitive: boolean;
 }): ReturnType<typeof filterFilesystemBrowseEntries> {
   const namesMatch = (left: string, right: string) =>
-    input.caseSensitive
-      ? left === right
-      : left.toLowerCase() === right.toLowerCase();
-  const visibleFilterQuery = namesMatch(
-    input.filterQuery,
-    input.pinnedDirectoryName,
-  )
+    input.caseSensitive ? left === right : left.toLowerCase() === right.toLowerCase();
+  const visibleFilterQuery = namesMatch(input.filterQuery, input.pinnedDirectoryName)
     ? ""
     : input.filterQuery;
-  const { visibleEntries } = filterFilesystemBrowseEntries(
-    input.browseEntries,
-    visibleFilterQuery,
-  );
+  const { visibleEntries } = filterFilesystemBrowseEntries(input.browseEntries, visibleFilterQuery);
   const exactEntry =
     input.filterQuery.length > 0
-      ? (input.browseEntries.find((entry) =>
-          namesMatch(entry.name, input.filterQuery),
-        ) ?? null)
+      ? (input.browseEntries.find((entry) => namesMatch(entry.name, input.filterQuery)) ?? null)
       : null;
   return { visibleEntries, exactEntry };
 }
@@ -840,9 +773,7 @@ export function getCommandPaletteMode(input: {
 }
 
 export function buildRootGroups(input: {
-  actionItems: ReadonlyArray<
-    CommandPaletteActionItem | CommandPaletteSubmenuItem
-  >;
+  actionItems: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
   recentThreadItems: ReadonlyArray<CommandPaletteActionItem>;
 }): CommandPaletteGroup[] {
   const groups: CommandPaletteGroup[] = [];
@@ -863,9 +794,7 @@ export function buildRootGroups(input: {
   return groups;
 }
 
-export function getCommandPaletteInputPlaceholder(
-  mode: CommandPaletteMode,
-): string {
+export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): string {
   switch (mode) {
     case "root":
       return "Search everything...";
@@ -878,9 +807,7 @@ export function getCommandPaletteInputPlaceholder(
   }
 }
 
-export function getEnvironmentBrowsePlatform(
-  os: string | null | undefined,
-): string {
+export function getEnvironmentBrowsePlatform(os: string | null | undefined): string {
   if (os === "windows") {
     return "Win32";
   }
@@ -917,9 +844,7 @@ export type AddProjectCloneFlow =
       readonly remoteUrl: string;
     };
 
-export function remoteProjectInputPlaceholder(
-  flow: AddProjectCloneFlow | null,
-): string | null {
+export function remoteProjectInputPlaceholder(flow: AddProjectCloneFlow | null): string | null {
   if (!flow) return null;
   if (flow.step === "confirm") return null;
   if (flow.source === "url") {
@@ -959,9 +884,7 @@ const OVERLAY_MODE_BY_COMMAND = {
   "projectSearch.toggle": "content",
 } as const satisfies Partial<Record<string, SearchOverlayMode>>;
 
-export function overlayModeForCommand(
-  command: string | null,
-): SearchOverlayMode | null {
+export function overlayModeForCommand(command: string | null): SearchOverlayMode | null {
   if (command === null) return null;
   return command in OVERLAY_MODE_BY_COMMAND
     ? OVERLAY_MODE_BY_COMMAND[command as keyof typeof OVERLAY_MODE_BY_COMMAND]
@@ -973,9 +896,7 @@ export function resolveCommandPaletteProject<TProject>(
   environmentId: EnvironmentId | null,
   projectId: ProjectId | null,
 ) {
-  return environmentId && projectId
-    ? projects.get(`${environmentId}:${projectId}`)
-    : undefined;
+  return environmentId && projectId ? projects.get(`${environmentId}:${projectId}`) : undefined;
 }
 
 /**
@@ -994,8 +915,7 @@ export function newThreadNoProjectIndex(
   const scratchAt = entries.findIndex((entry) => entry.isScratch);
   const scratch = entries[scratchAt];
   if (scratch && (scratch.pinned || scratch.isPreferred)) {
-    return entries.slice(0, scratchAt).filter((entry) => !entry.isScratch)
-      .length;
+    return entries.slice(0, scratchAt).filter((entry) => !entry.isScratch).length;
   }
   const pinnedCount = projects.filter((entry) => entry.pinned).length;
   return Math.min(pinnedCount + 1, projects.length);

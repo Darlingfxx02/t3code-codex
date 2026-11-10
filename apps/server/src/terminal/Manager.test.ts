@@ -457,7 +457,11 @@ it.layer(
       );
       expect(fresh).toMatchObject({ type: "upsert", terminal: { isPristine: true } });
 
-      yield* manager.write({ threadId: "thread-1", terminalId: DEFAULT_TERMINAL_ID, data: "pwd\n" });
+      yield* manager.write({
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "pwd\n",
+      });
       ptyAdapter.processes[0]!.emitExit({ exitCode: 0, signal: 0 });
       yield* Deferred.await(metadataReady);
       expect(

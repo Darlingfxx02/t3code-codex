@@ -188,6 +188,77 @@ export const PreviewReportStatusInput = Schema.Struct({
 });
 export type PreviewReportStatusInput = typeof PreviewReportStatusInput.Type;
 
+export const PreviewCaptureDesignSnapshotInput = Schema.Struct({
+  threadId: ThreadId,
+  tabId: PreviewTabId,
+});
+export type PreviewCaptureDesignSnapshotInput = typeof PreviewCaptureDesignSnapshotInput.Type;
+
+export const PreviewDesignNodeSnapshot = Schema.Struct({
+  nodeId: Schema.String,
+  parentId: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(["group", "text", "image", "vector"]),
+  name: Schema.String,
+  text: Schema.NullOr(Schema.String),
+  x: Schema.Number,
+  y: Schema.Number,
+  width: Schema.Number,
+  height: Schema.Number,
+  rotation: Schema.optional(Schema.Number),
+  flipX: Schema.optional(Schema.Boolean),
+  flipY: Schema.optional(Schema.Boolean),
+  fill: Schema.NullOr(Schema.String),
+  backgroundImage: Schema.optional(Schema.String),
+  border: Schema.NullOr(Schema.String),
+  fontFamily: Schema.NullOr(Schema.String),
+  fontSize: Schema.NullOr(Schema.Number),
+  fontWeight: Schema.NullOr(Schema.Number),
+  fontStyle: Schema.optional(Schema.String),
+  lineHeight: Schema.NullOr(Schema.Number),
+  letterSpacing: Schema.NullOr(Schema.Number),
+  textDecorationLine: Schema.optional(Schema.String),
+  textTransform: Schema.optional(Schema.String),
+  fontVariantCaps: Schema.optional(Schema.String),
+  fontFeatureSettings: Schema.optional(Schema.String),
+  fontVariationSettings: Schema.optional(Schema.String),
+  textWrapStyle: Schema.optional(Schema.String),
+  textAlign: Schema.optional(Schema.String),
+  textIndent: Schema.optional(Schema.Number),
+  textOverflow: Schema.optional(Schema.String),
+  maxLines: Schema.optional(Schema.Number),
+  color: Schema.NullOr(Schema.String),
+  opacity: Schema.Number,
+  mixBlendMode: Schema.optional(Schema.String),
+  borderRadius: Schema.Number,
+  clipContent: Schema.optional(Schema.Boolean),
+  boxShadow: Schema.optional(Schema.String),
+  filter: Schema.optional(Schema.String),
+  backdropFilter: Schema.optional(Schema.String),
+  designEffects: Schema.optional(Schema.String),
+  assetUrl: Schema.optional(Schema.String),
+  vectorPath: Schema.optional(Schema.String),
+  vectorClosed: Schema.optional(Schema.Boolean),
+  vectorStrokeWidth: Schema.optional(Schema.Number),
+  vectorFillOpacity: Schema.optional(Schema.Number),
+  vectorStrokeOpacity: Schema.optional(Schema.Number),
+  vectorStrokeCap: Schema.optional(Schema.String),
+  vectorStrokeJoin: Schema.optional(Schema.String),
+});
+export type PreviewDesignNodeSnapshot = typeof PreviewDesignNodeSnapshot.Type;
+
+export const PreviewDesignCapture = Schema.Struct({
+  url: Schema.String,
+  title: Schema.String,
+  browserEngine: Schema.optional(Schema.String),
+  sourceRevision: Schema.optional(Schema.String),
+  stateFixture: Schema.optional(Schema.String),
+  viewportWidth: Schema.Number,
+  viewportHeight: Schema.Number,
+  truncated: Schema.optional(Schema.Boolean),
+  nodes: Schema.Array(PreviewDesignNodeSnapshot),
+});
+export type PreviewDesignCapture = typeof PreviewDesignCapture.Type;
+
 export const PreviewResizeInput = Schema.Struct({
   threadId: ThreadId,
   tabId: PreviewTabId,
@@ -389,6 +460,11 @@ export class PreviewControlRequiredError extends Schema.TaggedError<PreviewContr
   }
 }
 
+export class PreviewCaptureDesignSnapshotError extends Schema.TaggedError<PreviewCaptureDesignSnapshotError>()(
+  "PreviewCaptureDesignSnapshotError",
+  { message: Schema.String },
+) {}
+
 export class PreviewClearProfileError extends Schema.TaggedError<PreviewClearProfileError>()(
   "PreviewClearProfileError",
   { profileId: Schema.String, cause: Schema.Defect() },
@@ -402,5 +478,6 @@ export const PreviewError = Schema.Union([
   PreviewSessionLookupError,
   PreviewInvalidUrlError,
   PreviewControlRequiredError,
+  PreviewCaptureDesignSnapshotError,
 ]);
 export type PreviewError = typeof PreviewError.Type;

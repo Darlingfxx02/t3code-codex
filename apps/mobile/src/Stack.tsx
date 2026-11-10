@@ -386,18 +386,18 @@ const SETTINGS_SCREENS = {
     linking: "settings/scheduled-tasks",
     options: {
       ...SETTINGS_PAGE_OPTIONS,
-      title: "Scheduled tasks",
+      title: "Automations",
       headerTitleStyle: { fontSize: 16, fontWeight: "800" },
     },
   }),
   SettingsScheduledTaskNew: createNativeStackScreen({
     screen: SettingsScheduledTaskNewRouteScreen,
     linking: "settings/scheduled-tasks/new",
-    options: { ...SETTINGS_PAGE_OPTIONS, title: "New scheduled task" },
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "New automation" },
   }),
   SettingsScheduledTaskEdit: createNativeStackScreen({
     screen: SettingsScheduledTaskEditRouteScreen,
-    options: { ...SETTINGS_PAGE_OPTIONS, title: "Edit scheduled task" },
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "Edit automation" },
   }),
   SettingsScheduledTaskBranch: createNativeStackScreen({
     screen: ScheduledTaskBranchPickerRouteScreen,

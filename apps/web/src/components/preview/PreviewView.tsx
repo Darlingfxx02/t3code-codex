@@ -1,4 +1,5 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { useNavigate } from "@tanstack/react-router";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { previewStreamDownloadUrl } from "@t3tools/client-runtime/preview/server-browser-stream";
 import {
@@ -40,13 +41,14 @@ import {
   useThreadPreviewState,
 } from "~/previewStateStore";
 import { resolveDiscoveredServerUrl } from "~/browser/browserTargetResolver";
-import { useEnvironmentSupportsServerBrowser } from "~/state/entities";
+import { useEnvironmentSupportsServerBrowser, useProject, useThreadShell } from "~/state/entities";
 import {
   useEnvironment,
   useEnvironmentHttpBaseUrl,
   usePrimaryEnvironmentId,
 } from "~/state/environments";
 import { previewEnvironment } from "~/state/preview";
+import { serverEnvironment } from "~/state/server";
 import { usePreviewStreamAccess } from "~/state/previewStream";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -63,6 +65,11 @@ import { closePreviewSession } from "./closePreviewSession";
 import { openPreviewSession } from "./openPreviewSession";
 import { showPreviewPopup } from "./showPreviewPopup";
 import { PreviewChromeRow } from "./PreviewChromeRow";
+import {
+  createDesignDocumentFromPreview,
+  materializePreviewAssets,
+} from "../design/previewToDesign";
+import { importDesignDocument } from "../design/useDesignDocument";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { PreviewMoreMenu, type PreviewMoreMenuActions } from "./PreviewMoreMenu";
 import { commitBrowserViewportChange } from "~/browser/browserViewportActions";
@@ -146,6 +153,7 @@ export function PreviewView({
   visible,
   onSendAnnotation,
 }: Props) {
+  const navigate = useNavigate();
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const [pickActive, setPickActive] = useState(false);
   const canSendAnnotation =
@@ -167,9 +175,17 @@ export function PreviewView({
   const open = useAtomCommand(previewEnvironment.open);
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
   const environmentLabel = useEnvironment(threadRef.environmentId)?.label ?? "the environment";
+  const threadShell = useThreadShell(threadRef);
+  const threadProject = useProject(
+    threadShell ? scopeProjectRef(threadRef.environmentId, threadShell.projectId) : null,
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const serverBrowser = useEnvironmentSupportsServerBrowser(threadRef.environmentId);
   const adjust = useAtomCommand(previewEnvironment.adjust, "preview appearance or zoom");
+  const captureServerDesignSnapshot = useAtomCommand(
+    serverEnvironment.previewCaptureDesignSnapshot,
+    "preview design snapshot",
+  );
 
   usePreviewSession(threadRef);
 
@@ -227,6 +243,90 @@ export function PreviewView({
   const panelRect = useBrowserSurfaceStore((state) =>
     runtimeTabId ? (state.byTabId[runtimeTabId]?.rect ?? null) : null,
   );
+
+  const openInCanvas = async () => {
+    if (snapshot === null || navStatus._tag !== "Success") return;
+    let capture;
+    let assetIdsByNodeId;
+    let assetMetadata;
+    if (previewBridge && runtimeTabId && !isServerTab) {
+      try {
+        capture = await previewBridge.captureDesignSnapshot(runtimeTabId);
+      } catch {
+        capture = undefined;
+      }
+    } else if (isServerTab && tabId) {
+      const result = await captureServerDesignSnapshot({
+        environmentId: threadRef.environmentId,
+        input: { threadId: threadRef.threadId, tabId },
+      });
+      if (result._tag === "Success") capture = result.value;
+    }
+    if (capture === undefined) {
+      toastManager.add({
+        type: "error",
+        title: "Could not import the preview",
+        description: "The screen could not be captured. Your Design files have not changed.",
+      });
+      return;
+    }
+    try {
+      const materialized = await materializePreviewAssets(capture);
+      assetIdsByNodeId = materialized.assetIdsByNodeId;
+      assetMetadata = materialized.assets;
+    } catch {
+      toastManager.add({
+        type: "error",
+        title: "Could not import the preview",
+        description: "The captured images could not be saved. Try again.",
+      });
+      return;
+    }
+    const capturedDocument = createDesignDocumentFromPreview({
+      url,
+      title: navStatus.title,
+      viewport,
+      colorScheme: snapshot.colorScheme ?? "system",
+      sourceRevision: snapshot.updatedAt,
+      sourceThreadId: threadRef.threadId,
+      ...(tabId === null ? {} : { sourceTabId: tabId }),
+      ...(capture === undefined ? {} : { capture }),
+      ...(assetIdsByNodeId === undefined ? {} : { assetIdsByNodeId }),
+      ...(assetMetadata === undefined ? {} : { assetMetadata }),
+    });
+    if (capture.truncated) {
+      toastManager.add({
+        type: "warning",
+        title: "Preview imported partially",
+        description: "The first 10,000 layers were imported; the source contains more layers.",
+      });
+    }
+    let document;
+    try {
+      document = await importDesignDocument(capturedDocument);
+    } catch {
+      toastManager.add({
+        type: "error",
+        title: "Could not save the Design file",
+        description:
+          "Your preview is still open. Open Design to recover the captured file or retry saving it.",
+      });
+      return;
+    }
+    void navigate({
+      to: "/design",
+      ...(threadProject
+        ? {
+            search: {
+              documentId: document.documentId,
+              environmentId: threadRef.environmentId,
+              cwd: threadProject.workspaceRoot,
+              relativePath: `.t3/design/${document.documentId}.json`,
+            },
+          }
+        : { search: { documentId: document.documentId } }),
+    });
+  };
 
   const navigateToResolvedUrl = async (resolvedUrl: string) => {
     if (isServerTab && serverSurfaceRef.current) {
@@ -899,6 +999,7 @@ export function PreviewView({
           isUnreachable || (!isServerTab && !desktopOverlay?.hasWebContents)
         }
         onPickElement={previewBridge && tabId && !isServerTab ? handlePickElement : undefined}
+        onOpenInCanvas={snapshot?.navStatus._tag === "Success" ? openInCanvas : undefined}
         pickActive={pickActive}
         pickDisabled={!tabId || isUnreachable}
         pickDisabledReason={

@@ -5,7 +5,7 @@ import {
 } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { TriangleAlertIcon } from "lucide-react";
-import { type ComponentProps, useId, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { isElectron } from "../../env";
 import { useHandleNewThread } from "../../hooks/useHandleNewThread";
@@ -118,6 +118,22 @@ export function SidebarUpdateArchitectureWarning() {
   return isElectron ? <SidebarUpdateArchitectureWarningContent /> : null;
 }
 
+function UpdateMenuItem({
+  rail,
+  className,
+  children,
+}: {
+  readonly rail: boolean;
+  readonly className?: string | undefined;
+  readonly children: ReactNode;
+}) {
+  return rail ? (
+    <div className={cn("shrink-0", className)}>{children}</div>
+  ) : (
+    <SidebarMenuItem className={className}>{children}</SidebarMenuItem>
+  );
+}
+
 function SidebarUpdateArchitectureWarningContent() {
   const state = useDesktopUpdateState();
   const visible = shouldShowArm64IntelBuildWarning(state);
@@ -190,11 +206,11 @@ export async function installLocalUpdate(
   }
 }
 
-export function SidebarUpdatePill() {
-  return <SidebarUpdateControl />;
+export function SidebarUpdatePill({ rail = false }: { readonly rail?: boolean }) {
+  return <SidebarUpdateControl rail={rail} />;
 }
 
-function SidebarUpdateControl() {
+function SidebarUpdateControl({ rail }: { readonly rail: boolean }) {
   const state = useDesktopUpdateState();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
@@ -297,26 +313,15 @@ function SidebarUpdateControl() {
       return;
     }
     setIsActionPending(true);
-    try {
-      const opened = await handleNewThread(reviewProjectRef, {
-        prompt: buildUpdateReviewPrompt({
-          currentVersion: state?.currentVersion ?? null,
-          targetVersion: state?.availableVersion ?? everything.version,
-          providerCount: everything.providerCount,
-          rows: everything.rows,
-          releaseNotes: state?.releaseNotes ?? [],
-        }),
-      });
-      if (opened === null) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not start update review",
-            description: "The customization project is not available right now.",
-          }),
-        );
-      }
-    } catch (error) {
+    const opened = await handleNewThread(reviewProjectRef, {
+      prompt: buildUpdateReviewPrompt({
+        currentVersion: state?.currentVersion ?? null,
+        targetVersion: state?.availableVersion ?? everything.version,
+        providerCount: everything.providerCount,
+        rows: everything.rows,
+        releaseNotes: state?.releaseNotes ?? [],
+      }),
+    }).catch((error: unknown) => {
       toastManager.add(
         stackedThreadToast({
           type: "error",
@@ -324,9 +329,18 @@ function SidebarUpdateControl() {
           description: error instanceof Error ? error.message : "An unexpected error occurred.",
         }),
       );
-    } finally {
-      setIsActionPending(false);
+      return undefined;
+    });
+    if (opened === null) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not start update review",
+          description: "The customization project is not available right now.",
+        }),
+      );
     }
+    setIsActionPending(false);
   };
 
   const handleAction = () => {
@@ -400,7 +414,7 @@ function SidebarUpdateControl() {
           ? { status: "downloading", percent: state.downloadPercent }
           : { status: "waiting" };
     return (
-      <SidebarMenuItem className="ml-auto flex flex-1">
+      <UpdateMenuItem rail={rail} className={rail ? undefined : "ml-auto flex flex-1"}>
         <SidebarUpdateCapsule
           run={run}
           local={local}
@@ -422,7 +436,7 @@ function SidebarUpdateControl() {
               }
             : {})}
         />
-      </SidebarMenuItem>
+      </UpdateMenuItem>
     );
   }
 
@@ -474,7 +488,7 @@ function SidebarUpdateControl() {
   );
 
   return (
-    <SidebarMenuItem className="ml-auto shrink-0">
+    <UpdateMenuItem rail={rail} className={rail ? undefined : "ml-auto shrink-0"}>
       <Popover
         handle={releaseNotesPopoverHandle}
         open={releaseNotesOpen && showReleaseNotesPopover}
@@ -511,7 +525,7 @@ function SidebarUpdateControl() {
           {!showReleaseNotesPopover ? (
             <TooltipPopup
               align="center"
-              side="top"
+              side={rail ? "right" : "top"}
               variant={showUpdateDetails ? "glass" : "default"}
             >
               {idleTooltip?.detail ? (
@@ -550,6 +564,6 @@ function SidebarUpdateControl() {
           </PopoverPopup>
         ) : null}
       </Popover>
-    </SidebarMenuItem>
+    </UpdateMenuItem>
   );
 }

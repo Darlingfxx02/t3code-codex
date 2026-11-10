@@ -96,6 +96,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.scheduledTasksRotateWebhookToken]: "scheduledTasks",
   [WS_METHODS.scheduledTasksListWebhookDeliveries]: "scheduledTasks",
   [WS_METHODS.scheduledTasksGetWebhookDelivery]: "scheduledTasks",
+  [WS_METHODS.taskWorkspaceRead]: "tasks",
+  [WS_METHODS.taskWorkspaceCommand]: "tasks",
   [WS_METHODS.secretsAnswerRequest]: "secrets",
   [WS_METHODS.guestShareCreate]: "guest-share",
   [WS_METHODS.cloudGetRelayClientStatus]: "cloud",
@@ -204,6 +206,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.previewClearProfile]: "preview",
   [WS_METHODS.previewReportProfiles]: "preview",
   [WS_METHODS.previewReportStatus]: "preview",
+  [WS_METHODS.previewCaptureDesignSnapshot]: "preview",
   [WS_METHODS.subscribePreviewEvents]: "preview",
   [WS_METHODS.subscribeDiscoveredLocalServers]: "preview",
   [WS_METHODS.previewStopLocalServer]: "preview",
@@ -221,6 +224,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeServerConfig]: "server",
   [WS_METHODS.subscribeServerLifecycle]: "server",
   [WS_METHODS.subscribeAuthAccess]: "auth",
+  [WS_METHODS.designRead]: "design",
+  [WS_METHODS.designSync]: "design",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";

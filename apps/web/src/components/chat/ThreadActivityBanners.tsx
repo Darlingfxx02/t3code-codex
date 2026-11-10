@@ -83,7 +83,7 @@ export function goalNowItem(input: {
   const presentation = presentProviderGoal(input.goal, isWorking);
   return {
     id: `goal:${input.threadId}`,
-    icon: <TargetIcon />,
+    icon: <TargetIcon className="size-4 shrink-0" />,
     title:
       presentation.usage === null
         ? presentation.title

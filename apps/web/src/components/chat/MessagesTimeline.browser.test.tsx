@@ -223,12 +223,12 @@ describe("MessagesTimeline work rows", () => {
         label: "Restarted",
         tone: "info",
         itemType: "notification",
-        structuredPayload: v2Item("notification", {
+        structuredPayload: (v2Item("notification", {
           id: "restart-notification",
           source: { kind: "system" },
           outcome: "completed",
           summary: "Restarted",
-        }).item,
+        }) as unknown as { readonly item: unknown }).item,
         projectedItem: v2Item("notification", {
           id: "restart-notification",
           source: { kind: "system" },

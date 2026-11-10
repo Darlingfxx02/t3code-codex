@@ -1327,6 +1327,23 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-tasks:live",
       tag: WS_METHODS.scheduledTasksSubscribe,
     }),
+    designRead: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:design:read",
+      tag: WS_METHODS.designRead,
+      staleTimeMs: 5_000,
+    }),
+    designSync: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:design:sync",
+      tag: WS_METHODS.designSync,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => `${environmentId}:${input.request.documentId}`,
+      },
+    }),
+    previewCaptureDesignSnapshot: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:preview:capture-design-snapshot",
+      tag: WS_METHODS.previewCaptureDesignSnapshot,
+    }),
     // A cold transcript scan is measured in seconds, so keep the result around
     // long enough that switching windows or re-rendering does not rescan.
     usageSummary: createEnvironmentRpcQueryAtomFamily(runtime, {

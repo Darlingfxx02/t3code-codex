@@ -25,7 +25,10 @@ vi.mock(import("../../state/use-atom-command"), async (importOriginal) => {
 });
 vi.mock(import("../../state/query"), async (importOriginal) => ({
   ...(await importOriginal()),
-  useEnvironmentQuery: (() => ({ data: { tasks: [task] }, error: null })) as never,
+  useEnvironmentQuery: (() => ({
+    data: { tasks: [{ ...task, ...taskState }] },
+    error: null,
+  })) as never,
 }));
 
 import { act, render as renderUi } from "../../../test/render";
@@ -40,9 +43,15 @@ const task = {
   schedule: { type: "interval", everyMs: 60000 },
   lastRunStatus: "never",
 } as ScheduledTask;
+const taskState: {
+  blockedByPolicy: string | undefined;
+  lastRunStatus: ScheduledTask["lastRunStatus"];
+} = { blockedByPolicy: undefined, lastRunStatus: "never" };
 
 async function setup() {
   state.allowed = true;
+  taskState.blockedByPolicy = undefined;
+  taskState.lastRunStatus = "never";
   state.toggle.mockReset().mockResolvedValue({ _tag: "Success" });
   state.run.mockReset().mockResolvedValue({ _tag: "Success" });
 
@@ -78,10 +87,30 @@ it("rejects a retained toggle after task permission is revoked", async () => {
   const { renderPanel, byLabel } = fixture;
   await renderPanel();
   state.allowed = false;
-  await act(async () => byLabel("Pause Daily review").click());
+  await act(async () => byLabel("Toggle Daily review automation").click());
   expect(state.toggle).not.toHaveBeenCalled();
 
   state.allowed = true;
-  await act(async () => byLabel("Pause Daily review").click());
+  await act(async () => byLabel("Toggle Daily review automation").click());
   expect(state.toggle).toHaveBeenCalledOnce();
+});
+
+it("allows pausing blocked or running automations", async () => {
+  await using fixture = await setup();
+  const { renderPanel, byLabel } = fixture;
+  taskState.blockedByPolicy = "Blocked by policy";
+  taskState.lastRunStatus = "running";
+  await renderPanel();
+  await act(async () => byLabel("Toggle Daily review automation").click());
+  expect(state.toggle).toHaveBeenCalledOnce();
+});
+
+it.each(["blocked", "running"] as const)("does not run a %s automation", async (status) => {
+  await using fixture = await setup();
+  const { renderPanel, byLabel } = fixture;
+  if (status === "blocked") taskState.blockedByPolicy = "Blocked by policy";
+  taskState.lastRunStatus = status === "running" ? "running" : "never";
+  await renderPanel();
+  await act(async () => byLabel("Run Daily review now").click());
+  expect(state.run).not.toHaveBeenCalled();
 });

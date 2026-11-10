@@ -5,6 +5,7 @@ import {
   Camera,
   ExternalLink,
   MousePointerClick,
+  PanelsTopLeftIcon,
   PictureInPicture2,
 } from "lucide-react";
 import {
@@ -41,6 +42,7 @@ interface Props {
   pictureInPicture?: boolean | undefined;
   pictureInPictureDisabled?: boolean | undefined;
   onPickElement?: (() => void) | undefined;
+  onOpenInCanvas?: (() => void) | undefined;
   pickActive?: boolean | undefined;
   pickDisabled?: boolean | undefined;
   pickDisabledReason?: string | undefined;
@@ -70,6 +72,7 @@ export function PreviewChromeRow({
   pictureInPicture,
   pictureInPictureDisabled,
   onPickElement,
+  onOpenInCanvas,
   pickActive,
   pickDisabled,
   pickDisabledReason,
@@ -290,6 +293,24 @@ export function PreviewChromeRow({
             <TooltipPopup>
               {pictureInPicture ? "Close floating preview" : "Float preview over chat"}
             </TooltipPopup>
+          </Tooltip>
+        ) : null}
+        {onOpenInCanvas ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={onOpenInCanvas}
+                  aria-label="Open in Canvas"
+                  type="button"
+                />
+              }
+            >
+              <PanelsTopLeftIcon />
+            </TooltipTrigger>
+            <TooltipPopup>Open in Canvas</TooltipPopup>
           </Tooltip>
         ) : null}
         {trailingActions}

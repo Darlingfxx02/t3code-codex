@@ -33,6 +33,42 @@ import { assetResponseHeaders, assetFileResponse, downloadContentDisposition } f
 import * as ServerHttp from "./http.ts";
 
 describe("MCP app asset responses", () => {
+  it.effect("refreshes saved HTML render interactions without changing the attachment", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-html-viewer-" });
+      const file = path.join(directory, "result.html");
+      const html =
+        '<html><head><style id="t3-theme">old-theme</style><script>(function(){var s=document.getElementById("t3-theme");legacyViewer();})();</script></head><body><img src="data:image/png;base64,AA"></body></html>';
+      yield* fs.writeFileString(file, html);
+      const response = HttpServerResponse.toWeb(
+        yield* assetFileResponse({
+          path: file,
+          mimeType: "text/html",
+          renderIntent: "html-render",
+        }),
+      );
+      const body = yield* Effect.promise(() => response.text());
+      expect(body).toContain("stopImmediatePropagation");
+      expect(body).not.toContain("legacyViewer");
+      expect(body).not.toContain("old-theme");
+      expect(body).toContain('<img src="data:image/png;base64,AA">');
+      expect(yield* fs.readFileString(file)).toBe(html);
+      for (const download of [true, false]) {
+        const untouched = HttpServerResponse.toWeb(
+          yield* assetFileResponse({
+            path: file,
+            mimeType: "text/html",
+            download,
+            ...(download ? { renderIntent: "html-render" as const } : {}),
+          }),
+        );
+        expect(yield* Effect.promise(() => untouched.text())).toBe(html);
+      }
+    }).pipe(Effect.provide(layerFileResponse)),
+  );
+
   it.effect(
     "transforms existing snapshots only with explicit render intent and fresh metadata",
     () =>

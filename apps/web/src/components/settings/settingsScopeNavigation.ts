@@ -3,11 +3,21 @@ import type { SearchMiddleware } from "@tanstack/react-router";
 import { validateSettingsScopeSearch, type SettingsScopeSearch } from "./settingsScope";
 
 export function validateSettingsRouteSearch(raw: Record<string, unknown>) {
-  return validateSettingsScopeSearch(
+  const scope = validateSettingsScopeSearch(
     typeof raw.environmentId === "string" && raw.machine === undefined && raw.project === undefined
       ? { ...raw, machine: raw.environmentId }
       : raw,
   );
+  return {
+    ...scope,
+    ...(raw.returnTo === "automations" ? { returnTo: "automations" as const } : {}),
+    ...(typeof raw.returnEnvironmentId === "string" && raw.returnEnvironmentId.trim()
+      ? { returnEnvironmentId: raw.returnEnvironmentId }
+      : {}),
+    ...(typeof raw.returnTaskId === "string" && raw.returnTaskId.trim()
+      ? { returnTaskId: raw.returnTaskId }
+      : {}),
+  };
 }
 
 const SCOPE_KEYS = [

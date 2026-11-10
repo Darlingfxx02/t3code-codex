@@ -16,6 +16,7 @@ export interface UseResizableWidthOptions {
   readonly minWidth: number;
   readonly maxWidth: number;
   readonly edge: "left" | "right";
+  readonly onLiveResize?: ((width: number) => void) | undefined;
 }
 
 export interface ResizableWidthHandlers {
@@ -84,6 +85,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       bounds: { min: minWidth, max: maxWidth },
       resize(nextWidth) {
         host?.style.setProperty(RESIZABLE_WIDTH_PROPERTY, `${nextWidth}px`);
+        options.onLiveResize?.(nextWidth);
         return nextWidth;
       },
       finish(finalWidth, moved) {

@@ -8,11 +8,14 @@ import {
   htmlRenderThemeMessage,
   readHtmlRenderContentHeight,
   readHtmlRenderLinkRequest,
+  readHtmlRenderImageRequest,
 } from "@t3tools/shared/htmlRender";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useHtmlRenderTheme } from "~/hooks/useHtmlRenderTheme";
 import { observeResize } from "~/lib/observeResize";
+import { ExpandedImageDialog } from "../chat/ExpandedImageDialog";
+import type { ExpandedImagePreview } from "../chat/ExpandedImagePreview";
 
 /**
  * A visual the agent published, as the guest sees it. The server sends it with a sandbox CSP and
@@ -33,6 +36,7 @@ export function GuestHtmlRender({
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [width, setWidth] = useState(HTML_RENDER_COLUMN_WIDTH);
   const [contentHeight, setContentHeight] = useState<number>();
+  const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   // The theme rides in the fragment for the first paint; later changes are posted.
   const [src] = useState(
     () =>
@@ -62,14 +66,16 @@ export function GuestHtmlRender({
         return;
       }
       // Only while the reader is using this frame, so a page cannot open links on its own.
-      const link = readHtmlRenderLinkRequest(event.data);
-      if (
-        link === undefined ||
-        document.activeElement !== frame ||
-        navigator.userActivation?.isActive === false
-      ) {
+      if (document.activeElement !== frame || navigator.userActivation?.isActive === false) {
         return;
       }
+      const image = readHtmlRenderImageRequest(event.data);
+      if (image) {
+        setExpandedImage({ images: [{ src: image.src, name: image.name }], index: 0 });
+        return;
+      }
+      const link = readHtmlRenderLinkRequest(event.data);
+      if (link === undefined) return;
       window.open(link.url, "_blank", "noopener,noreferrer");
       frame.contentWindow?.postMessage(htmlRenderResult(link.id), "*");
     };
@@ -91,6 +97,9 @@ export function GuestHtmlRender({
         sandbox="allow-scripts allow-forms allow-popups allow-downloads"
         className="block size-full rounded-lg border border-border"
       />
+      {expandedImage ? (
+        <ExpandedImageDialog preview={expandedImage} onClose={() => setExpandedImage(null)} />
+      ) : null}
     </div>
   );
 }

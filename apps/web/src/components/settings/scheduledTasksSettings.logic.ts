@@ -5,6 +5,7 @@ import {
   type ProjectId,
   ScheduledTaskId,
   type ScheduledTask,
+  type ScheduledTaskSchedule,
   type ScheduledTaskUpsertSchedule,
   type ModelSelection,
   type RuntimeMode,
@@ -49,7 +50,54 @@ export function validateScheduledTasksSearch(raw: Record<string, unknown>) {
     ...(typeof raw.taskId === "string" && raw.taskId.trim()
       ? { taskId: ScheduledTaskId.make(raw.taskId) }
       : {}),
+    ...(typeof raw.returnEnvironmentId === "string" && raw.returnEnvironmentId.trim()
+      ? { returnEnvironmentId: EnvironmentId.make(raw.returnEnvironmentId) }
+      : {}),
+    ...(typeof raw.returnTaskId === "string" && raw.returnTaskId.trim()
+      ? { returnTaskId: ScheduledTaskId.make(raw.returnTaskId) }
+      : {}),
+    ...(raw.create === true || raw.create === "1" || raw.create === 1 ? { create: true } : {}),
+    ...(raw.returnTo === "automations" ? { returnTo: "automations" as const } : {}),
   };
+}
+
+const SCHEDULE_WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const ONCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
+  if (schedule.type === "webhook") return "On webhook";
+  if (schedule.type === "once") return `Once, ${ONCE_FORMATTER.format(new Date(schedule.runAt))}`;
+  if (schedule.type === "interval") {
+    const minutes = schedule.everyMs / 60_000;
+    return Number.isInteger(minutes)
+      ? `Every ${minutes} min`
+      : `Every ${Math.round(schedule.everyMs / 1000)} sec`;
+  }
+  const weekdays = schedule.weekdays ?? [];
+  const days =
+    weekdays.length === 0
+      ? "Daily"
+      : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
+        ? "Weekdays"
+        : weekdays.map((day) => SCHEDULE_WEEKDAY_LABELS[day]).join(", ");
+  return `${days} at ${schedule.timeOfDay}`;
+}
+
+export function scheduledTaskStatusVariant(status: ScheduledTask["lastRunStatus"]) {
+  if (status === "failed") return "error";
+  if (status === "succeeded") return "success";
+  if (status === "running") return "info";
+  return "outline";
+}
+
+export function scheduledTaskRunStatusLabel(status: ScheduledTask["lastRunStatus"]) {
+  if (status === "failed") return "Failed";
+  if (status === "succeeded") return "Succeeded";
+  if (status === "running") return "Running";
+  return "Not run";
 }
 
 export type ScheduleMode = "fixed" | "once" | "interval" | "webhook";

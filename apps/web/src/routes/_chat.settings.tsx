@@ -1,13 +1,10 @@
-import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { RotateCcwIcon } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
 
-import { AppRouteModal, AppRouteModalClose } from "../components/AppRouteModal";
 import { SettingsBreadcrumb } from "../components/settings/SettingsBreadcrumb";
-import { SettingsSidebarNav } from "../components/settings/SettingsSidebarNav";
 import {
   SettingsScopeProvider,
   useSettingsScope,
@@ -16,6 +13,8 @@ import { useEnvironments } from "../state/environments";
 import { SettingsScopeNotice } from "../components/settings/SettingsScopeNotice";
 import { SETTINGS_DEVICE_ONLY_PATHS } from "../components/settings/SettingsScopeSentence";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
+import { SidebarInset } from "../components/ui/sidebar";
+import { workspaceAreaProps } from "../lib/workspaceFocus";
 import {
   retainSettingsScope,
   validateSettingsRouteSearch,
@@ -117,29 +116,26 @@ function SettingsContentLayout() {
   const [restoreSignal, setRestoreSignal] = useState(0);
 
   return (
-    <AppRouteModal label="Settings">
-      <div className="relative flex min-h-0 flex-1">
-        <SettingsSidebarNav pathname={location.pathname} />
-        <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
-            <SettingsBreadcrumb pathname={location.pathname} />
-            <div className="ms-auto flex shrink-0 items-center gap-1">
-              {location.pathname === "/settings/general" ? (
-                <RestoreDeviceDefaultsButton
-                  onRestored={() => setRestoreSignal((value) => value + 1)}
-                />
-              ) : null}
-              <AppRouteModalClose />
-            </div>
-          </header>
-          <div key={`${contentScopeKey}:${restoreSignal}`} className="min-h-0 flex flex-1 flex-col">
-            <SettingsScopeBoundary pathname={location.pathname}>
-              <Outlet />
-            </SettingsScopeBoundary>
-          </div>
+    <SidebarInset
+      {...contentArea}
+      className="h-full min-h-0 min-w-0 overflow-hidden overscroll-y-none"
+    >
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
+        <SettingsBreadcrumb pathname={location.pathname} />
+        <div className="ms-auto flex shrink-0 items-center gap-1">
+          {location.pathname === "/settings/general" ? (
+            <RestoreDeviceDefaultsButton
+              onRestored={() => setRestoreSignal((value) => value + 1)}
+            />
+          ) : null}
         </div>
+      </header>
+      <div key={`${contentScopeKey}:${restoreSignal}`} className="min-h-0 flex flex-1 flex-col">
+        <SettingsScopeBoundary pathname={location.pathname}>
+          <Outlet />
+        </SettingsScopeBoundary>
       </div>
-    </AppRouteModal>
+    </SidebarInset>
   );
 }
 
@@ -153,9 +149,11 @@ function SettingsRouteLayout() {
       singleEnvironment={pathname === "/settings/providers" || pathname === "/settings/secrets"}
       onChange={(next) => {
         // Send every axis so retain middleware recognizes "all" as an explicit target.
+        const returnSearch = rawSearch;
         void navigate({
           to: pathname,
           search: () => ({
+            ...returnSearch,
             project: next.project,
             machine: next.machine,
             checkout: next.checkout,

@@ -249,6 +249,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         <div className="rounded-md border border-border/45 bg-muted/15 p-2 italic text-muted-foreground">
           <ChatMarkdown
             text={item.text}
+            onImageExpand={props.onImageExpand}
             cwd={props.cwd}
             threadRef={{
               environmentId: props.environmentId,

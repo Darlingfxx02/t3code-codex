@@ -1,4 +1,4 @@
-import { PanelBottomIcon, PanelRightIcon, SquareMenuIcon } from "lucide-react";
+import { PanelBottomIcon, PanelRightCloseIcon, PanelRightIcon, SquareMenuIcon } from "lucide-react";
 import { Maximize2, Minimize2 } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { memo, type ReactNode } from "react";
@@ -112,18 +112,22 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               className="shrink-0 [-webkit-app-region:no-drag]"
               pressed={rightPanelOpen}
               onPressedChange={onToggleRightPanel}
-              aria-label="Toggle right panel"
+              aria-label={rightPanelOpen ? "Close right panel" : "Open right panel"}
               data-right-panel-toggle
               variant="ghost"
               size="sm"
               disabled={!rightPanelAvailable}
             >
-              <PanelRightIcon className="size-4" />
+              {rightPanelOpen ? (
+                <PanelRightCloseIcon className="size-4" />
+              ) : (
+                <PanelRightIcon className="size-4" />
+              )}
             </Toggle>
           </TooltipTrigger>
           <TooltipPopup side="bottom">
             {rightPanelAvailable
-              ? `Toggle right panel${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}`
+              ? `${rightPanelOpen ? "Close" : "Open"} right panel${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}`
               : rightPanelUnavailableLabel}
           </TooltipPopup>
         </Tooltip>
@@ -184,7 +188,7 @@ export function WorkspaceTitlebarControls(props: {
 }) {
   return (
     <div
-      className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
+      className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-chrome-height)] items-center gap-1 [-webkit-app-region:no-drag]"
       data-workspace-titlebar-controls
     >
       {props.showMaximizeControl ? (

@@ -116,13 +116,10 @@ describe("workspace area focus", () => {
     expect(document.activeElement).toBe(panel.button);
   });
 
-  it("moves only between the areas of an open Settings modal", () => {
+  it("moves between the Settings shell areas", () => {
     using fixture = setup();
-    fixture.area("sidebar", 0);
-    fixture.area("composer", 2);
-    const modal = fixture.append('<div role="dialog" data-app-modal=""></div>');
-    const nav = fixture.area("settings-nav", 0, modal);
-    const content = fixture.area("settings", 1, modal);
+    const nav = fixture.area("settings-nav", 0);
+    const content = fixture.area("settings", 1);
     nav.button.focus();
     expect(fixture.controller.move(1)).toBe(true);
     expect(document.activeElement).toBe(content.button);

@@ -32,11 +32,15 @@ import {
   useState,
 } from "react";
 import { isElectron } from "~/env";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { FileSurfaceLoading } from "./fileSurfaceChrome";
 import type { PdfViewState } from "./PdfViewer";
 
 import { useOpenLink } from "~/browser/useOpenLink";
-import { ExpandedImageDialog } from "~/components/chat/ExpandedImageDialog";
+import {
+  ExpandedImageDialog,
+  openExpandedImagePreview,
+} from "~/components/chat/ExpandedImageDialog";
 import type { ExpandedImagePreview } from "~/components/chat/ExpandedImagePreview";
 import { useHtmlRenderTheme } from "~/hooks/useHtmlRenderTheme";
 import { shortcutConflictKey } from "~/keybindings";
@@ -301,7 +305,9 @@ export function HtmlRenderDocument(props: {
     }
     const imageRequest = readHtmlRenderImageRequest(event.data);
     if (imageRequest !== undefined) {
-      setExpandedImage({ images: [{ src: imageRequest.src, name: imageRequest.name }], index: 0 });
+      const preview = { images: [{ src: imageRequest.src, name: imageRequest.name }], index: 0 };
+      if (props.threadRef) openExpandedImagePreview(scopedThreadKey(props.threadRef), preview);
+      else setExpandedImage(preview);
     }
   });
   // Attach at commit because a fast page may post its initial height before passive effects run.
