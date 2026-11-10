@@ -42,10 +42,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: ./.github/actions/setup-ci-deps
         with:
-          install-args: --filter @t3tools/desktop... --filter t3... --filter @t3tools/web... --filter @t3tools/monorepo
-      - name: Resolve script workspace dependencies
-        run: |
-          node --input-type=module -e "import fs from 'node:fs'; import path from 'node:path'; fs.symlinkSync(path.resolve('node_modules/.pnpm/node_modules'), 'scripts/node_modules', process.platform === 'win32' ? 'junction' : 'dir');"
+          install-args: --filter @t3tools/desktop... --filter t3... --filter @t3tools/web... --filter @t3tools/monorepo --filter @t3tools/scripts...
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           toolchain: stable
